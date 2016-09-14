@@ -54,11 +54,15 @@ bar {
 ```
 
 Usage:
+
 1. create the base jail: `minijail.sh --create skel`
 2. create a jail: `minijail.sh --create foo`
 
-Drop a jail: `minijail.sh --delete foo`
-Upgrade the base jail: `minijail.sh --update skel` (but you'll need to recompile/reinstall all your packages or to install misc/compat\<old major version>x in your jails when major version changes)
+* Drop a jail: `minijail.sh --delete foo`
+* Upgrade the base jail: `minijail.sh --update skel` (but you'll need to recompile/reinstall all your packages or to install misc/compat\<old major version>x in your jails when major version changes)
+* Start the *foo* jail: `minijail.sh --start foo`
+* Stop the *foo* jail: `minijail.sh --stop foo`
+* Get a root shell to *foo* jail: `minijail.sh --shell foo`
 
 FAQ:
 * vipw doesn't work: use `vipw -d /private/etc` instead as vipw try to use /etc/ as temporary directory which is not writable

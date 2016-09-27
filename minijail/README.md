@@ -55,8 +55,8 @@ bar {
 
 Usage:
 
-1. create the base jail: `minijail.sh --create skel`
-2. create a jail: `minijail.sh --create foo`
+1. create the base jail: `minijail.sh --install skel`
+2. create a first real jail: `minijail.sh --install foo`
 
 * Drop a jail: `minijail.sh --delete foo`
 * Upgrade the base jail: `minijail.sh --update skel` (but you'll need to recompile/reinstall all your packages or to install misc/compat\<old major version>x in your jails when major version changes)
@@ -67,11 +67,19 @@ Usage:
 FAQ:
 * vipw doesn't work: use `vipw -d /private/etc` instead as vipw try to use /etc/ as temporary directory which is not writable
 * /etc/ssh/sshd_config is not writable: for simple changes, add `-o` flags to `sshd_flags` in /etc/rc.conf else add etc/ssh/sshd_config to `SYMLINKED_FILES`
-* how is it different from ezjail? It goes further as a larger part of the system is shared (starting by /etc/). Only files that can't be common (eg: accounts management) are "recreated" (an empty jail currently use around 228k)
+* how is it different from ezjail? It goes further as a larger part of the system is shared (starting by /etc/). Only files that can't be common (eg: accounts management) are "recreated" (an empty jail currently use around 236ko)
 * I follow STABLE, I can't install from binaries? A release can be forced by defining an UNAME_r environment variable (for (t)csh, run: `env UNAME_r=10.3-RELEASE minijail.sh --install skel` ; remove `env` for (z|k|ba)?sh)
+* passwd doesn't work. Still the same as vipw: passwd (common call pw_init(3) of libutil in fact) try to use /etc/ as which is not writable but passwd doesn't provide any option to change its default directory. To get it working, you need to patch (before running any minijail.sh --create skel or --update skel) passwd and the pam_unix module this way:
+
+```
+patch -p0 < passwd_tmp_dir.patch
+make -C /usr/src/usr.bin/passwd/ install
+make -C /usr/src/lib/libpam/ install
+```
+
+(run `svnlite revert -R /usr/src` before `svnlite update /usr/src` then reapply the patch)
 
 TODO:
-* passwd doesn't work as it wants to create a temporary file in /etc/ and haven't any option to change its directory
-* create skel on a dedicated zfs filesystem too
+* add /etc/motd to DUPED_FILES?
 * /etc/mail/certs needs to be writable (sendmail)?
 * better to have /etc/login.conf{.db,} writable?

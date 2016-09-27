@@ -1,8 +1,6 @@
-#!/bin/sh
+#!/bin/sh -e
 
-set -e
-
-readonly __DIR__=`cd $(dirname "${0}"); pwd -P`
+readonly __DIR__=`cd $(dirname -- "${0}"); pwd -P`
 
 . ${__DIR__}/../_routines.inc.sh
 
@@ -24,6 +22,12 @@ readonly SYMLINKED_PATHS="home root usr/local tmp var"
 : ${FROM:='binaries'}
 : ${SKEL_NAME:='skel'}
 : ${JAILS_ROOT:='/var/jails'}
+: ${SKIP_CLEAN_ON_BUILDWORLD:='NO'}
+
+zpool=`zfs get -H -o value name "${JAILS_ROOT}"`
+readonly ZPOOL_NAME=${zpool%%/*} # `zfs get -Ho value name "${JAILS_ROOT}" | cut -d / -f 1`
+
+readonly USE_ZFS="`(df -T ${JAILS_ROOT} | tail -n 1 | cut -wf 2 | grep -q '^zfs$' && echo YES) || echo NO`"
 
 usage()
 {
@@ -38,7 +42,7 @@ usage()
 	echo '--stop    : stop a jail (currently running)'
 	echo ''
 	echo 'Options for --install or --update:'
-	echo '-b, --binaries (default) : use compiled sets distributed by FreeBSD to create or update jails'
+	echo '-b, --binaries (default) : use compiled sets distributed by FreeBSD to create jails and update them with freebsd-update'
 	echo '-s, --sources            : use sources (have to be installed into /usr/src) to create or update jails'
 	echo ''
 	exit 2
@@ -52,7 +56,11 @@ install_jail_precheck()
 		exit 1
 	fi
 
-	mkdir -p "${JAILS_ROOT}/${1}"
+	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
+		zfs create -p "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
+	else
+		mkdir -p "${JAILS_ROOT}/${1}"
+	fi
 
 	return 0
 }
@@ -67,8 +75,8 @@ create_skel_shared()
 		chsh -s /bin/tcsh
 		tzsetup -s Europe/Paris
 		touch etc/fstab
-		# newaliases # TODO: ensure name resolving first
 		# TODO: resolv.conf
+		# newaliases # TODO: ensure name resolving first
 		# /etc/rc.conf
 		echo 'hostname="\$(/bin/hostname)"' >> etc/rc.conf
 		echo 'sendmail_enable="NO"' >> etc/rc.conf
@@ -77,26 +85,69 @@ create_skel_shared()
 		echo 'setenv LANG fr_FR.UTF-8' >> etc/csh.login
 		echo 'setenv MM_CHARSET UTF-8' >> etc/csh.login
 
-		mkdir {skel,private}
+		mkdir skel private
 		for path in $DUPED_FILES; do
 			mkdir -p "skel/\$(dirname \$path)"
 			mv "\$path" "skel/\$path"
 		done
 # 	fi
 		for path in $SYMLINKED_PATHS $SYMLINKED_FILES $DUPED_FILES; do
+			chflags -R noschg "\$path"
 			rm -fr "\$path"
 			ln -snf "/private/\$path" "\$path"
 		done
 EOC
+	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
+		zfs snapshot "${ZPOOL_NAME}${JAILS_ROOT}/${SKEL_NAME}@created"
+	fi
+}
+
+# _rebuild_if_needed(to)
+#
+# Run `make buildworld` if:
+# - /usr/obj/usr/src/usr.bin/uname/uname doesn't exist
+# - /usr/obj/usr/src/usr.bin/uname/uname -U output is (strictly) less than FreeBSD version extracted from /usr/src/sys/sys/param.h
+_rebuild_world_if_needed()
+{
+	local OBJ_VERSION
+
+# 	echo "Updating sources..."
+# 	svnlite update /usr/src > /dev/null 2>&1 # TODO: redirect stderr to some file?
+	if [ ! -x /usr/obj/usr/src/usr.bin/uname/uname -o `/usr/obj/usr/src/usr.bin/uname/uname -U` -lt "${1}" ]; then
+		echo "Compiling world, this may take some time..."
+		make -C /usr/src -j$((`sysctl -n hw.ncpu`+1)) buildworld NO_CLEAN=${SKIP_CLEAN_ON_BUILDWORLD} > /dev/null 2>&1 # TODO: redirect stderr to some file?
+	fi
+}
+
+# bool _is_update_needed(to)
+_is_update_needed()
+{
+	local JAIL_VERSION
+
+	readonly JAIL_VERSION=`chroot "${JAILS_ROOT}/${SKEL_NAME}" uname -U`
+
+	if [ "${JAIL_VERSION}" -ge "${1}" ]; then
+		info "The base jail does not need to be updated"
+		return 1
+	else
+		info "The base jail needs to be updated (${JAIL_VERSION} => ${1})"
+		return 0
+	fi
 }
 
 create_skel_from_sources()
 {
+	local SRC_VERSION
+
+	readonly SRC_VERSION=`grep '#define[ ][ ]*__FreeBSD_version[ ][ ]*[[:digit:]][[:digit:]]*' /usr/src/sys/sys/param.h | cut -wf 3`
+
 	install_jail_precheck "${SKEL_NAME}"
 
-	make -C /usr/src -j$((`sysctl -n hw.ncpu`+1)) buildworld NO_CLEAN=YES
-	make -C /usr/src installworld DESTDIR="${JAILS_ROOT}/${SKEL_NAME}"
-	make -C /usr/src/etc distribution DESTDIR="${JAILS_ROOT}/${SKEL_NAME}"
+	_rebuild_world_if_needed "${SRC_VERSION}"
+	echo "Installing world..."
+	make -C /usr/src installworld DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
+	echo "Populating etc/..."
+	make -C /usr/src/etc distribution DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
 
 	create_skel_shared
 }
@@ -136,18 +187,39 @@ create_skel_from_binaries()
 	create_skel_shared
 }
 
+# void _post_update(to)
+_post_update()
+{
+# 	zfs snapshot "${ZPOOL_NAME}/${JAILS_ROOT}/${SKEL_NAME}@${1}"
+}
+
 update_skel_from_binaries()
 {
-	[ -f /etc/freebsd-update_for_jails.conf ] || ( grep -ve '#' -e '^$' -we Components -we BackupKernel /etc/freebsd-update.conf ; echo 'Components world' ; echo 'BackupKernel no' ) > /etc/freebsd-update_for_jails.conf
-	freebsd-update -b "${JAILS_ROOT}/${SKEL_NAME}" -f /etc/freebsd-update_for_jails.conf fetch install
+	local WORLD_VERSION
+
+	readonly WORLD_VERSION=`uname -U`
+	_is_update_needed "${WORLD_VERSION}"
+	if [ $? -eq 0 ]; then
+		[ -f /etc/freebsd-update_for_jails.conf ] || ( grep -ve '#' -e '^$' -we Components -we BackupKernel /etc/freebsd-update.conf ; echo 'Components world' ; echo 'BackupKernel no' ) > /etc/freebsd-update_for_jails.conf
+		freebsd-update -b "${JAILS_ROOT}/${SKEL_NAME}" -f /etc/freebsd-update_for_jails.conf fetch install
+		_post_update "${WORLD_VERSION}"
+	fi
 }
 
 update_skel_from_sources()
 {
-	make -C /usr/src -j$((`sysctl -n hw.ncpu`+1)) buildworld NO_CLEAN=YES
-	mergemaster -p -D "${JAILS_ROOT}/${SKEL_NAME}"
-	make -C /usr/src installworld DESTDIR="${JAILS_ROOT}/${SKEL_NAME}"
-	mergemaster -iF --run-updates=always -D "${JAILS_ROOT}/${SKEL_NAME}"
+	local SRC_VERSION
+
+	readonly SRC_VERSION=`grep '#define[ ][ ]*__FreeBSD_version[ ][ ]*[[:digit:]][[:digit:]]*' /usr/src/sys/sys/param.h | cut -wf 3`
+	_is_update_needed "${SRC_VERSION}"
+	if [ $? -eq 0 ]; then
+		_rebuild_world_if_needed "${SRC_VERSION}"
+		mergemaster -p -D "${JAILS_ROOT}/${SKEL_NAME}"
+		echo "Installing world..."
+		make -C /usr/src installworld DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
+		mergemaster -iF --run-updates=always -D "${JAILS_ROOT}/${SKEL_NAME}"
+		_post_update "${SRC_VERSION}"
+	fi
 }
 
 # update_jail(name)
@@ -163,9 +235,10 @@ install_jail()
 {
 	install_jail_precheck "${1}"
 
-	zfs create -p "`zpool list -Ho name`${JAILS_ROOT}/${1}"
-	zfs set mountpoint="${JAILS_ROOT}/${1}" "`zpool list -Ho name`${JAILS_ROOT}/${1}"
-# 	zfs mount "`zpool list -Ho name`${JAILS_ROOT}/${1}"
+	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
+		zfs set mountpoint="${JAILS_ROOT}/${1}" "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
+# 		zfs mount "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
+	fi
 	for path in ${SYMLINKED_PATHS}; do
 		mkdir -p "${JAILS_ROOT}/${1}/${path}" # private/${path}
 	done
@@ -175,8 +248,10 @@ install_jail()
 	done
 	mkdir -p ${JAILS_ROOT}/${1}/var/log ${JAILS_ROOT}/${1}/var/run # private/ * 2
 	pwd_mkdb -d "${JAILS_ROOT}/${1}/etc/" "${JAILS_ROOT}/${1}/etc/master.passwd" # private/etc * 2
-	zfs umount "`zpool list -Ho name`${JAILS_ROOT}/${1}"
-	zfs set canmount=noauto "`zpool list -Ho name`${JAILS_ROOT}/${1}"
+	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
+		zfs umount "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
+		zfs set canmount=noauto "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
+	fi
 }
 
 # do_install(name)
@@ -197,7 +272,6 @@ do_install()
 do_update()
 {
 	if [ "${1}" = "${SKEL_NAME}" ]; then
-		# TODO: create a snapshot
 		if [ "${FROM}" = 'binaries' ]; then
 			update_skel_from_binaries
 		else
@@ -232,11 +306,13 @@ do_stop()
 # do_stop(name)
 do_delete()
 {
-	if [ "${1}" = "${SKEL_NAME}" ]; then
-		chflags -R "${JAILS_ROOT}/${1}"
-		rm -fr "${JAILS_ROOT}/${1}"
+	# TODO: ask for confirmation
+	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
+		zfs destroy -r "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
+		rmdir "${JAILS_ROOT}/${1}"
 	else
-		zfs destroy "`zpool list -Ho name`${JAILS_ROOT}/${1}"
+		chflags -R noschg "${JAILS_ROOT}/${1}"
+		rm -fr "${JAILS_ROOT}/${1}"
 	fi
 }
 

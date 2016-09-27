@@ -1,0 +1,100 @@
+Index: /usr/src/lib/libpam/modules/pam_unix/pam_unix.c
+===================================================================
+--- /usr/src/lib/libpam/modules/pam_unix/pam_unix.c	(revision 306273)
++++ /usr/src/lib/libpam/modules/pam_unix/pam_unix.c	(working copy)
+@@ -396,8 +396,12 @@
+ 		switch (old_pwd->pw_fields & _PWF_SOURCE) {
+ 		case _PWF_FILES:
+ #endif
++		{
++			const void *passwd_tmp_dir = NULL;
++
+ 			retval = PAM_SERVICE_ERR;
+-			if (pw_init(NULL, NULL))
++			(void)pam_get_data(pamh, "passwd_tmp_dir", &passwd_tmp_dir);
++			if (pw_init((const char *) passwd_tmp_dir, NULL))
+ 				openpam_log(PAM_LOG_ERROR, "pw_init() failed");
+ 			else if ((pfd = pw_lock()) == -1)
+ 				openpam_log(PAM_LOG_ERROR, "pw_lock() failed");
+@@ -410,6 +414,7 @@
+ 			else
+ 				retval = PAM_SUCCESS;
+ 			pw_fini();
++		}
+ #ifdef YP
+ 			break;
+ 		case _PWF_NIS:
+Index: /usr/src/usr.bin/passwd/passwd.1
+===================================================================
+--- /usr/src/usr.bin/passwd/passwd.1	(revision 306273)
++++ /usr/src/usr.bin/passwd/passwd.1	(working copy)
+@@ -37,6 +37,7 @@
+ .Sh SYNOPSIS
+ .Nm
+ .Op Fl l
++.Op Fl t Ar directory
+ .Op Ar user
+ .Nm yppasswd
+ .Op Fl l
+@@ -76,6 +77,11 @@
+ When changing only the local password,
+ .Xr pwd_mkdb 8
+ is used to update the password databases.
++.It Fl t Ar directory
++specify an alternative
++.Fa directory
++for the password file
++.Pa master.passwd
+ .El
+ .Pp
+ When changing local or NIS password, the next password change date
+Index: /usr/src/usr.bin/passwd/passwd.c
+===================================================================
+--- /usr/src/usr.bin/passwd/passwd.c	(revision 306273)
++++ /usr/src/usr.bin/passwd/passwd.c	(working copy)
+@@ -55,11 +55,12 @@
+ 
+ static char	*yp_domain;
+ static char	*yp_host;
++static char	*passwd_tmp_dir;
+ 
+ static void
+ usage(void)
+ {
+-	fprintf(stderr, "usage: passwd [-ly] [-d domain] [-h host] [user]\n");
++	fprintf(stderr, "usage: passwd [-ly] [-d domain] [-h host] [-t directory] [user]\n");
+ 	exit(1);
+ }
+ 
+@@ -71,7 +72,7 @@
+ 	int o, pam_err;
+ 	uid_t uid;
+ 
+-	while ((o = getopt(argc, argv, "d:h:loy")) != -1)
++	while ((o = getopt(argc, argv, "d:h:t:loy")) != -1)
+ 		switch (o) {
+ 		case 'd':
+ 			yp_domain = optarg;
+@@ -79,6 +80,9 @@
+ 		case 'h':
+ 			yp_host = optarg;
+ 			break;
++		case 't':
++			passwd_tmp_dir = optarg;
++			break;
+ 		case 'l':
+ 		case 'o':
+ 		case 'y':
+@@ -154,6 +158,12 @@
+ 	pam_err = pam_set_data(pamh, "yp_server", yp_host, NULL);
+ 	pam_check("pam_set_data");
+ 
++	/* set temporary directory if given */
++	if (passwd_tmp_dir != NULL) {
++		pam_err = pam_set_data(pamh, "passwd_tmp_dir", passwd_tmp_dir, NULL);
++		pam_check("pam_set_data");
++	}
++
+ 	/* set new password */
+ 	pam_err = pam_chauthtok(pamh, 0);
+ 	pam_check("pam_chauthtok");

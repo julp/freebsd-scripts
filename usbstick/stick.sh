@@ -2,7 +2,7 @@
 
 set -e
 
-readonly __DIR__=`cd $(dirname "${0}"); pwd -P`
+readonly __DIR__=`cd $(dirname -- "${0}"); pwd -P`
 
 . ${__DIR__}/../_routines.inc.sh
 

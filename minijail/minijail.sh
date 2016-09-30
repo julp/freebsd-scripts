@@ -7,23 +7,24 @@ readonly __DIR__=`cd $(dirname -- "${0}"); pwd -P`
 # use vnet ? Default: use if available
 VNET=`sysctl -n kern.features.vimage`
 
-MIRROR="ftp.freebsd.org/pub/FreeBSD/releases"
 # default cache directory
 BIN_CACHE_DIR="${HOME}/.binjailcache/$(uname -r)"
 # force "base" as minimal sets to install
 SET_TO_INSTALL="base"
 
-readonly DUPED_FILES="etc/passwd etc/master.passwd etc/group"
-readonly SYMLINKED_FILES="etc/spwd.db etc/pwd.db etc/host.conf"
-readonly SYMLINKED_PATHS="home root usr/local tmp var"
+readonly DUPED_FILES="etc/passwd etc/master.passwd etc/group etc/host.conf etc/motd etc/login.conf"
+readonly SYMLINKED_FILES="etc/spwd.db etc/pwd.db etc/login.conf.db"
+readonly SYMLINKED_PATHS="etc/rc.conf.d home root usr/local tmp var"
 
 [ -s /usr/local/etc/minijail.conf ] && . /usr/local/etc/minijail.conf
 
+: ${MIRROR:='ftp.freebsd.org/pub/FreeBSD/releases'}
 : ${FROM:='binaries'}
 : ${SKEL_NAME:='skel'}
 : ${JAILS_ROOT:='/var/jails'}
 : ${SKIP_CLEAN_ON_BUILDWORLD:='NO'}
 
+VERBOSE='false'
 zpool=`zfs get -H -o value name "${JAILS_ROOT}"`
 readonly ZPOOL_NAME=${zpool%%/*} # `zfs get -Ho value name "${JAILS_ROOT}" | cut -d / -f 1`
 
@@ -31,7 +32,7 @@ readonly USE_ZFS="`(df -T ${JAILS_ROOT} | tail -n 1 | cut -wf 2 | grep -q '^zfs$
 
 usage()
 {
-	echo "Usage: `basename $0` [ -s | -b ] ACTION name..."
+	echo "Usage: `basename $0` [ -v ] [ -s | -b ] ACTION name..."
 	echo ''
 	echo "ACTION is one of:"
 	echo '--install : create a jail'
@@ -45,6 +46,8 @@ usage()
 	echo '-b, --binaries (default) : use compiled sets distributed by FreeBSD to create jails and update them with freebsd-update'
 	echo '-s, --sources            : use sources (have to be installed into /usr/src) to create or update jails'
 	echo ''
+	echo 'General options:'
+	echo '-v, --verbose : display debug informations'
 	exit 2
 }
 
@@ -68,29 +71,31 @@ install_jail_precheck()
 create_skel_shared()
 {
 	chroot "${JAILS_ROOT}/${SKEL_NAME}" /bin/sh << EOC
-# 	if [ 'x' = 'y' ]; then
 		# put here any command you'd need, paths are relative to the jail's root
 		ln -sf dev/null kernel
 		mkdir -p usr/ports
 		chsh -s /bin/tcsh
 		tzsetup -s Europe/Paris
 		touch etc/fstab
-		# TODO: resolv.conf
-		# newaliases # TODO: ensure name resolving first
+		(echo -n 'nameserver ' ; route get default | grep interface | cut -wf 3 | xargs ifconfig | grep inet | grep -v inet6 | cut -wf 3) > /etc/resolv.conf
+		newaliases
 		# /etc/rc.conf
 		echo 'hostname="\$(/bin/hostname)"' >> etc/rc.conf
-		echo 'sendmail_enable="NO"' >> etc/rc.conf
+		#echo 'sendmail_enable="NO"' >> etc/rc.conf
 		echo 'syslogd_flags="-ss"' >> etc/rc.conf
-		# /etc/csh.login
+		# TODO: inherit current locale
+		# /etc/csh.login - (t)csh
 		echo 'setenv LANG fr_FR.UTF-8' >> etc/csh.login
 		echo 'setenv MM_CHARSET UTF-8' >> etc/csh.login
+		# /etc/profile - (ba|k|z)sh
+		echo 'export LANG=fr_FR.UTF-8' >> /etc/profile
+		echo 'export MM_CHARSET=UTF-8' >> /etc/profile
 
 		mkdir skel private
 		for path in $DUPED_FILES; do
 			mkdir -p "skel/\$(dirname \$path)"
 			mv "\$path" "skel/\$path"
 		done
-# 	fi
 		for path in $SYMLINKED_PATHS $SYMLINKED_FILES $DUPED_FILES; do
 			chflags -R noschg "\$path"
 			rm -fr "\$path"
@@ -217,7 +222,7 @@ update_skel_from_sources()
 		mergemaster -p -D "${JAILS_ROOT}/${SKEL_NAME}"
 		echo "Installing world..."
 		make -C /usr/src installworld DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
-		mergemaster -iF --run-updates=always -D "${JAILS_ROOT}/${SKEL_NAME}"
+		mergemaster -PUFi --run-updates=always -D "${JAILS_ROOT}/${SKEL_NAME}"
 		_post_update "${SRC_VERSION}"
 	fi
 }
@@ -225,9 +230,14 @@ update_skel_from_sources()
 # update_jail(name)
 update_jail()
 {
-# 	mergemaster -p -D "${JAILS_ROOT}/${1}"
-# 	mergemaster -iF --run-updates=always -D "${JAILS_ROOT}/${1}"
-	# TODO: rebuild databases (cap_mkdb, newaliases, etc)
+# 	if [ "${FROM}" = 'binaries' ]; then
+# 		jexec -l "${1}" pkg upgrade
+# 	else
+# 		mergemaster -p -D "${JAILS_ROOT}/${1}"
+# 		mergemaster -PUFi --run-updates=always -D "${JAILS_ROOT}/${1}"
+# 		jexec -l "${1}" portmaster -a
+# 	fi
+	# TODO: rebuild binary databases (cap_mkdb, newaliases, etc)
 }
 
 # install_jail(name)
@@ -293,14 +303,14 @@ do_start()
 {
 	JID=`jls -j "${1}" jid 2> /dev/null || true`
 	if [ -z "${JID}" ]; then
-		jail -c "${1}"
+		jail -c`${VERBOSE} && echo 'v'` "${1}"
 	fi
 }
 
 # do_stop(name)
 do_stop()
 {
-	jail -r "${1}"
+	jail -r`${VERBOSE} && echo 'v'` "${1}"
 }
 
 # do_stop(name)
@@ -320,28 +330,31 @@ newopts=""
 for var in "$@" ; do
 	case "$var" in
 	--delete)
-		ACTION="delete"
+		ACTION='delete'
 		;;
 	--install)
-		ACTION="install"
+		ACTION='install'
 		;;
 	--update)
-		ACTION="update"
+		ACTION='update'
 		;;
 	--binary)
-		FROM="binaries"
+		FROM='binaries'
 		;;
 	--source)
-		FROM="sources"
+		FROM='sources'
 		;;
 	--shell)
-		ACTION="shell"
+		ACTION='shell'
 		;;
 	--start)
-		ACTION="start"
+		ACTION='start'
 		;;
 	--stop)
-		ACTION="stop"
+		ACTION='stop'
+		;;
+	--verbose)
+		VERBOSE='true'
 		;;
 	--*)
 		usage
@@ -356,13 +369,16 @@ done
 set -- $newopts
 unset var newopts
 
-while getopts 'bs' COMMAND_LINE_ARGUMENT ; do
+while getopts 'bsv' COMMAND_LINE_ARGUMENT ; do
 	case "${COMMAND_LINE_ARGUMENT}" in
 	b)
-		FROM="binaries"
+		FROM='binaries'
 		;;
 	s)
-		FROM="sources"
+		FROM='sources'
+		;;
+	v)
+		VERBOSE='true'
 		;;
 	*)
 		usage

@@ -9,21 +9,22 @@ Minijail: create jails on top of a read-only filesystem in order to:
 /private/ is the own (writable) space of the jail.
 
 Few files are symlinked from this base jail to /private/ to make it work:
+* /etc/motd
+* /etc/login.conf{,.db}
 * /etc/passwd
 * /etc/master.passwd
 * /etc/group
 * /etc/spwd.db
 * /etc/pwd.db
 * /etc/host.conf
+* /etc/rc.conf.d/ (use /etc/rc.conf from the base jail to share your parameters to all jails)
 * /home
 * /root
 * /usr/local
 * /tmp
 * /var
 
-Requirements:
-* zfs available
-* be root to run it
+Requirements: be root to run it
 
 /etc/jail.conf:
 ```
@@ -69,17 +70,14 @@ FAQ:
 * /etc/ssh/sshd_config is not writable: for simple changes, add `-o` flags to `sshd_flags` in /etc/rc.conf else add etc/ssh/sshd_config to `SYMLINKED_FILES`
 * how is it different from ezjail? It goes further as a larger part of the system is shared (starting by /etc/). Only files that can't be common (eg: accounts management) are "recreated" (an empty jail currently use around 236ko)
 * I follow STABLE, I can't install from binaries? A release can be forced by defining an UNAME_r environment variable (for (t)csh, run: `env UNAME_r=10.3-RELEASE minijail.sh --install skel` ; remove `env` for (z|k|ba)?sh)
-* passwd doesn't work. Still the same as vipw: passwd (common call pw_init(3) of libutil in fact) try to use /etc/ as which is not writable but passwd doesn't provide any option to change its default directory. To get it working, you need to patch (before running any minijail.sh --create skel or --update skel) passwd and the pam_unix module this way:
+* passwd doesn't work. Still the same as vipw: passwd (common call pw_init(3) of libutil in fact) try to use /etc/ as which is not writable but passwd doesn't provide any option to change its default directory. To get it working as `passwd -t /private/etc`, you need to patch (before running any minijail.sh --create skel or --update skel) passwd and the pam_unix module this way:
 
 ```
 patch -p0 < passwd_tmp_dir.patch
-make -C /usr/src/usr.bin/passwd/ install
-make -C /usr/src/lib/libpam/ install
+for path in usr.bin/passwd/ lib/libpam/ usr.bin/chpass/; do make -C "/usr/src/${path}" && make -C "/usr/src/${path}" install; done
 ```
 
 (run `svnlite revert -R /usr/src` before `svnlite update /usr/src` then reapply the patch)
 
 TODO:
-* add /etc/motd to DUPED_FILES?
 * /etc/mail/certs needs to be writable (sendmail)?
-* better to have /etc/login.conf{.db,} writable?

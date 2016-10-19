@@ -67,17 +67,25 @@ Usage:
 
 FAQ:
 * vipw doesn't work: use `vipw -d /private/etc` instead as vipw try to use /etc/ as temporary directory which is not writable
-* /etc/ssh/sshd_config is not writable: for simple changes, add `-o` flags to `sshd_flags` in /etc/rc.conf else add etc/ssh/sshd_config to `SYMLINKED_FILES`
+* /etc/ssh/sshd_config is not writable: for simple changes, add `-o` flags to `sshd_flags` in /etc/rc.conf.d/sshd else add etc/ssh/sshd_config to `SYMLINKED_FILES`
 * how is it different from ezjail? It goes further as a larger part of the system is shared (starting by /etc/). Only files that can't be common (eg: accounts management) are "recreated" (an empty jail currently use around 236ko)
 * I follow STABLE, I can't install from binaries? A release can be forced by defining an UNAME_r environment variable (for (t)csh, run: `env UNAME_r=10.3-RELEASE minijail.sh --install skel` ; remove `env` for (z|k|ba)?sh)
 * passwd doesn't work. Still the same as vipw: passwd (common call pw_init(3) of libutil in fact) try to use /etc/ as which is not writable but passwd doesn't provide any option to change its default directory. To get it working as `passwd -t /private/etc`, you need to patch (before running any minijail.sh --create skel or --update skel) passwd and the pam_unix module this way:
 
 ```
-patch -p0 < passwd_tmp_dir.patch
-for path in usr.bin/passwd/ lib/libpam/ usr.bin/chpass/; do make -C "/usr/src/${path}" && make -C "/usr/src/${path}" install; done
+cd /usr/src
+patch -p0 < /path/to/minijail/minijail.patch
+for path in usr.bin/passwd/ lib/libpam/ usr.bin/chpass/ usr.sbin/pw lib/libutil; do make -C "/usr/src/${path}" && make -C "/usr/src/${path}" install; done
 ```
 
 (run `svnlite revert -R /usr/src` before `svnlite update /usr/src` then reapply the patch)
 
+This patch:
+* allows /etc/login.conf to be (and follow) a symlink
+* changes the default path from /etc to /private/etc for pw_init(3) and gr_init(3) in jails
+* "fix" pw(8) to no longer hardcodes conf.etcpath to "/etc" and rely on default behaviour of pw_init/gr_init
+* add an operator (`[=`) to prepend item to lists in jail.conf(5) (and added `]=`, an alias for `+=`)
+
 TODO:
 * /etc/mail/certs needs to be writable (sendmail)?
+* borbid installation of base/skel jail from binaries and apply the patch in the process?

@@ -12,9 +12,9 @@ BIN_CACHE_DIR="${HOME}/.binjailcache/$(uname -r)"
 # force "base" as minimal sets to install
 SET_TO_INSTALL="base"
 
-readonly DUPED_FILES="etc/passwd etc/master.passwd etc/group etc/host.conf etc/motd etc/login.conf"
-readonly SYMLINKED_FILES="etc/spwd.db etc/pwd.db etc/login.conf.db"
-readonly SYMLINKED_PATHS="etc/rc.conf.d home root usr/local tmp var"
+readonly DUPED_FILES="etc/passwd etc/master.passwd etc/group etc/hosts etc/login.conf etc/motd"
+readonly SYMLINKED_FILES="etc/make.conf etc/spwd.db etc/pwd.db etc/login.conf.db"
+readonly SYMLINKED_PATHS="etc/rc.conf.d home root usr/local tmp var mnt"
 
 [ -s /usr/local/etc/minijail.conf ] && . /usr/local/etc/minijail.conf
 
@@ -74,11 +74,13 @@ create_skel_shared()
 		# put here any command you'd need, paths are relative to the jail's root
 		ln -sf dev/null kernel
 		mkdir -p usr/ports
-		chsh -s /bin/tcsh
+		chsh -s /bin/tcsh > /dev/null 2>&1
 		tzsetup -s Europe/Paris
 		touch etc/fstab
 		(echo -n 'nameserver ' ; route get default | grep interface | cut -wf 3 | xargs ifconfig | grep inet | grep -v inet6 | cut -wf 3) > /etc/resolv.conf
-		newaliases
+		# /etc/host.conf
+		echo 'hosts' >> etc/host.conf
+		echo 'dns' >> etc/host.conf
 		# /etc/rc.conf
 		echo 'hostname="\$(/bin/hostname)"' >> etc/rc.conf
 		#echo 'sendmail_enable="NO"' >> etc/rc.conf
@@ -91,13 +93,16 @@ create_skel_shared()
 		echo 'export LANG=fr_FR.UTF-8' >> /etc/profile
 		echo 'export MM_CHARSET=UTF-8' >> /etc/profile
 
+		# create symlink for security/ca_root_nss
+		ln -s /usr/local/share/certs/ca-root-nss.crt /etc/ssl/cert.pem
+
 		mkdir skel private
 		for path in $DUPED_FILES; do
 			mkdir -p "skel/\$(dirname \$path)"
 			mv "\$path" "skel/\$path"
 		done
 		for path in $SYMLINKED_PATHS $SYMLINKED_FILES $DUPED_FILES; do
-			chflags -R noschg "\$path"
+			[ -e "\$path" ] && chflags -R noschg "\$path"
 			rm -fr "\$path"
 			ln -snf "/private/\$path" "\$path"
 		done
@@ -250,18 +255,38 @@ install_jail()
 # 		zfs mount "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
 	fi
 	for path in ${SYMLINKED_PATHS}; do
-		mkdir -p "${JAILS_ROOT}/${1}/${path}" # private/${path}
+		mkdir -p "${JAILS_ROOT}/${1}/${path}"
 	done
+	chmod 1777 "${JAILS_ROOT}/${1}/tmp" # /tmp => /private/tmp ?
 	for file in ${DUPED_FILES}; do
-		mkdir -p "$(dirname ${JAILS_ROOT}/${1}/${file})" # private/${file}
-		cp "${JAILS_ROOT}/${SKEL_NAME}/skel/${file}" "${JAILS_ROOT}/${1}/${file}" # private/${file}
+		mkdir -p "$(dirname ${JAILS_ROOT}/${1}/${file})"
+		cp "${JAILS_ROOT}/${SKEL_NAME}/skel/${file}" "${JAILS_ROOT}/${1}/${file}"
 	done
-	mkdir -p ${JAILS_ROOT}/${1}/var/log ${JAILS_ROOT}/${1}/var/run # private/ * 2
-	pwd_mkdb -d "${JAILS_ROOT}/${1}/etc/" "${JAILS_ROOT}/${1}/etc/master.passwd" # private/etc * 2
+	mkdir -p "${JAILS_ROOT}/${1}/var/log" "${JAILS_ROOT}/${1}/var/run"
+	pwd_mkdb -d "${JAILS_ROOT}/${1}/etc/" "${JAILS_ROOT}/${1}/etc/master.passwd"
+# 	mount -t nullfs -o ro "${JAILS_ROOT}/${SKEL_NAME}" "${JAILS_ROOT}/${1}"
+# 	mount -t devfs .  "${JAILS_ROOT}/${1}/dev"
+# 	chroot "${JAILS_ROOT}/${1}" /bin/sh << EOC
+# 		newaliases
+# EOC
+	(
+		cat <<- "EOS"
+			WRKDIRPREFIX=/var/ports
+			DISTDIR=${WRKDIRPREFIX}/distfiles
+			PACKAGES=${WRKDIRPREFIX}/packages
+
+			PKG_ROOTDIR=/private/
+
+			OPTIONS_UNSET_FORCE=EXAMPLES NLS DOCS MAN3 MANPAGES
+		EOS
+	) > "${JAILS_ROOT}/${1}/etc/make.conf"
+# 	umount "${JAILS_ROOT}/${1}/dev" "${JAILS_ROOT}/${1}"
 	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
 		zfs umount "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
 		zfs set canmount=noauto "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
 	fi
+# NOTE: to add host to /etc/hosts
+# ( route get default | grep interface | cut -wf 3 | xargs ifconfig | grep inet | grep -v inet6 | cut -wf 3 ; hostname ) | paste - - >> /etc/hosts
 }
 
 # do_install(name)
@@ -319,7 +344,7 @@ do_delete()
 	# TODO: ask for confirmation
 	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
 		zfs destroy -r "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
-		rmdir "${JAILS_ROOT}/${1}"
+		[ -d "${JAILS_ROOT}/${1}" ] && rmdir "${JAILS_ROOT}/${1}"
 	else
 		chflags -R noschg "${JAILS_ROOT}/${1}"
 		rm -fr "${JAILS_ROOT}/${1}"

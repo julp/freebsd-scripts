@@ -13,7 +13,7 @@ BIN_CACHE_DIR="${HOME}/.binjailcache/$(uname -r)"
 SET_TO_INSTALL="base"
 
 readonly DUPED_FILES="etc/passwd etc/master.passwd etc/group etc/hosts etc/login.conf etc/motd"
-readonly SYMLINKED_FILES="etc/make.conf etc/spwd.db etc/pwd.db etc/login.conf.db"
+readonly SYMLINKED_FILES="etc/make.conf etc/spwd.db etc/pwd.db etc/login.conf.db etc/ssh/ssh_host_rsa_key etc/ssh/ssh_host_rsa_key.pub etc/ssh/ssh_host_ecdsa_key etc/ssh/ssh_host_ecdsa_key.pub etc/ssh/ssh_host_ed25519_key etc/ssh/ssh_host_ed25519_key.pub"
 readonly SYMLINKED_PATHS="etc/rc.conf.d home root usr/local tmp var mnt"
 
 [ -s /usr/local/etc/minijail.conf ] && . /usr/local/etc/minijail.conf
@@ -85,6 +85,7 @@ create_skel_shared()
 		echo 'hostname="\$(/bin/hostname)"' >> etc/rc.conf
 		#echo 'sendmail_enable="NO"' >> etc/rc.conf
 		echo 'syslogd_flags="-ss"' >> etc/rc.conf
+		echo 'sshd_flags="-o ListenAddress=\$(route get default | grep interface | cut -wf 3 | xargs ifconfig | grep inet | grep -v inet6 | cut -wf 3)"' >> etc/rc.conf
 		# TODO: inherit current locale
 		# /etc/csh.login - (t)csh
 		echo 'setenv LANG fr_FR.UTF-8' >> etc/csh.login
@@ -262,7 +263,7 @@ install_jail()
 		mkdir -p "$(dirname ${JAILS_ROOT}/${1}/${file})"
 		cp "${JAILS_ROOT}/${SKEL_NAME}/skel/${file}" "${JAILS_ROOT}/${1}/${file}"
 	done
-	mkdir -p "${JAILS_ROOT}/${1}/var/log" "${JAILS_ROOT}/${1}/var/run"
+	mkdir -p "${JAILS_ROOT}/${1}/etc/ssh" "${JAILS_ROOT}/${1}/var/log" "${JAILS_ROOT}/${1}/var/run"
 	pwd_mkdb -d "${JAILS_ROOT}/${1}/etc/" "${JAILS_ROOT}/${1}/etc/master.passwd"
 # 	mount -t nullfs -o ro "${JAILS_ROOT}/${SKEL_NAME}" "${JAILS_ROOT}/${1}"
 # 	mount -t devfs .  "${JAILS_ROOT}/${1}/dev"
@@ -274,8 +275,6 @@ install_jail()
 			WRKDIRPREFIX=/var/ports
 			DISTDIR=${WRKDIRPREFIX}/distfiles
 			PACKAGES=${WRKDIRPREFIX}/packages
-
-			PKG_ROOTDIR=/private/
 
 			OPTIONS_UNSET_FORCE=EXAMPLES NLS DOCS MAN3 MANPAGES
 		EOS

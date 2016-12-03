@@ -86,6 +86,7 @@ create_skel_shared()
 		#echo 'sendmail_enable="NO"' >> etc/rc.conf
 		echo 'syslogd_flags="-ss"' >> etc/rc.conf
 		echo 'sshd_flags="-o ListenAddress=\$(route get default | grep interface | cut -wf 3 | xargs ifconfig | grep inet | grep -v inet6 | cut -wf 3)"' >> etc/rc.conf
+		echo 'clear_tmp_enable="YES"' >> etc/rc.conf
 		# TODO: inherit current locale
 		# /etc/csh.login - (t)csh
 		echo 'setenv LANG fr_FR.UTF-8' >> etc/csh.login
@@ -93,6 +94,8 @@ create_skel_shared()
 		# /etc/profile - (ba|k|z)sh
 		echo 'export LANG=fr_FR.UTF-8' >> /etc/profile
 		echo 'export MM_CHARSET=UTF-8' >> /etc/profile
+		# disable periodic
+		sed -i '' '/^[^#].*periodic/s/^/#/' etc/crontab
 
 		# create symlink for security/ca_root_nss
 		ln -s /usr/local/share/certs/ca-root-nss.crt /etc/ssl/cert.pem

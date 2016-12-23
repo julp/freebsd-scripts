@@ -65,7 +65,30 @@ Usage:
 * Stop the *foo* jail: `minijail.sh --stop foo`
 * Get a root shell to *foo* jail: `minijail.sh --shell foo`
 
+To fix errors in ports (files not found/installed by cpio during stage - devel/jsoncpp or devel/cmake-modules for example): in /usr/ports/Mk/bsd.port.mk, change:
+
+```
+COPYTREE_BIN=   ${SH} -c '(${FIND} -Ed $$0 $$2 | ${CPIO} -dumpl $$1 >/dev/null 2>&1) && \
+                                                   ${FIND} -Ed $$0 $$2 \(   -type d -exec ${SH} -c '\''cd '\''$$1'\'' && chmod 755 "$$@"'\'' -- . {} + \
+                                                                                                 -o -type f -exec ${SH} -c '\''cd '\''$$1'\'' && chmod ${BINMODE} "$$@"'\'' -- . {} + \)' --
+COPYTREE_SHARE= ${SH} -c '(${FIND} -Ed $$0 $$2 | ${CPIO} -dumpl $$1 >/dev/null 2>&1) && \
+                                                   ${FIND} -Ed $$0 $$2 \(   -type d -exec ${SH} -c '\''cd '\''$$1'\'' && chmod 755 "$$@"'\'' -- . {} + \
+                                                                                                 -o -type f -exec ${SH} -c '\''cd '\''$$1'\'' && chmod ${SHAREMODE} "$$@"'\'' -- . {} + \)' --
+```
+
+To:
+
+```
+COPYTREE_BIN=   ${SH} -c '(${FIND} -Ed $$0 $$2 | ${CPIO} -dumpl `realpath -- $$1` >/dev/null 2>&1) && \
+                                                   ${FIND} -Ed $$0 $$2 \(   -type d -exec ${SH} -c '\''cd '\''$$1'\'' && chmod 755 "$$@"'\'' -- . {} + \
+                                                                                                 -o -type f -exec ${SH} -c '\''cd '\''$$1'\'' && chmod ${BINMODE} "$$@"'\'' -- . {} + \)' --
+COPYTREE_SHARE= ${SH} -c '(${FIND} -Ed $$0 $$2 | ${CPIO} -dumpl `realpath -- $$1` >/dev/null 2>&1) && \
+                                                   ${FIND} -Ed $$0 $$2 \(   -type d -exec ${SH} -c '\''cd '\''$$1'\'' && chmod 755 "$$@"'\'' -- . {} + \
+                                                                                                 -o -type f -exec ${SH} -c '\''cd '\''$$1'\'' && chmod ${SHAREMODE} "$$@"'\'' -- . {} + \)' --
+```
+
 FAQ:
+
 * vipw doesn't work: use `vipw -d /private/etc` instead as vipw try to use /etc/ as temporary directory which is not writable
 * /etc/ssh/sshd_config is not writable: for simple changes, add `-o` flags to `sshd_flags` in /etc/rc.conf.d/sshd else add etc/ssh/sshd_config to `SYMLINKED_FILES`
 * how is it different from ezjail? It goes further as a larger part of the system is shared (starting by /etc/). Only files that can't be common (eg: accounts management) are "recreated" (an empty jail currently use around 236ko)

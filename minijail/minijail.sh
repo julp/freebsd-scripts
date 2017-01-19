@@ -279,7 +279,8 @@ install_jail()
 			DISTDIR=${WRKDIRPREFIX}/distfiles
 			PACKAGES=${WRKDIRPREFIX}/packages
 
-			OPTIONS_UNSET_FORCE=EXAMPLES NLS DOCS MAN3 MANPAGES
+			OPTIONS_UNSET_FORCE=EXAMPLES MAN3 NLS DOCS DOC HELP
+			security_ca_root_nss_UNSET_FORCE=ETCSYMLINK
 		EOS
 	) > "${JAILS_ROOT}/${1}/etc/make.conf"
 # 	umount "${JAILS_ROOT}/${1}/dev" "${JAILS_ROOT}/${1}"

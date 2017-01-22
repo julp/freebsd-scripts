@@ -1,5 +1,11 @@
 #!/bin/sh -e
 
+# How to find FreeBSD version?
+# - /usr/src/sys/sys/param.h (for and from sources)
+# - /usr/src/sys/conf/newvers.sh (for and from sources)
+# - (/usr/obj/usr/src/bin/freebsd-version/)freebsd-version -u (relevant: this a script but it is (re)generated from /usr/src/sys/conf/newvers.sh)
+# - (/usr/obj/usr/src/usr.bin/uname/)uname -U (but irrelevant from a jail)
+
 readonly __DIR__=`cd $(dirname -- "${0}"); pwd -P`
 
 . ${__DIR__}/../_routines.inc.sh
@@ -13,13 +19,14 @@ BIN_CACHE_DIR="${HOME}/.binjailcache/$(uname -r)"
 SET_TO_INSTALL="base"
 
 readonly DUPED_FILES="etc/passwd etc/master.passwd etc/group etc/hosts etc/login.conf etc/motd"
-readonly SYMLINKED_FILES="etc/make.conf etc/spwd.db etc/pwd.db etc/login.conf.db etc/ssh/ssh_host_rsa_key etc/ssh/ssh_host_rsa_key.pub etc/ssh/ssh_host_ecdsa_key etc/ssh/ssh_host_ecdsa_key.pub etc/ssh/ssh_host_ed25519_key etc/ssh/ssh_host_ed25519_key.pub"
-readonly SYMLINKED_PATHS="etc/rc.conf.d home root usr/local tmp var mnt"
+# NOTE: root is not treated as a path because the dot files in /.* are links to /root/.* and if /root/ is not on a the same filesystem as /, ln fails with a EXDEV (cross device link)
+readonly SYMLINKED_FILES="root etc/make.conf etc/spwd.db etc/pwd.db etc/login.conf.db etc/ssh/ssh_host_rsa_key etc/ssh/ssh_host_rsa_key.pub etc/ssh/ssh_host_ecdsa_key etc/ssh/ssh_host_ecdsa_key.pub etc/ssh/ssh_host_ed25519_key etc/ssh/ssh_host_ed25519_key.pub"
+readonly SYMLINKED_PATHS="etc/rc.conf.d home usr/local tmp var mnt"
 
 [ -s /usr/local/etc/minijail.conf ] && . /usr/local/etc/minijail.conf
 
 : ${MIRROR:='ftp.freebsd.org/pub/FreeBSD/releases'}
-: ${FROM:='binaries'}
+: ${FROM:='sources'}
 : ${SKEL_NAME:='skel'}
 : ${JAILS_ROOT:='/var/jails'}
 : ${SKIP_CLEAN_ON_BUILDWORLD:='NO'}
@@ -35,16 +42,16 @@ usage()
 	echo "Usage: `basename $0` [ -v ] [ -s | -b ] ACTION name..."
 	echo ''
 	echo "ACTION is one of:"
-	echo '--install : create a jail'
-	echo '--update  : upgrade a jail'
-	echo '--delete  : drop a jail'
-	echo '--shell   : acquire a root shell into the jail'
-	echo '--start   : start a jail (if not yet active)'
-	echo '--stop    : stop a jail (currently running)'
+	echo '--install             : create a jail'
+	echo '--update or --upgrade : upgrade a jail'
+	echo '--delete              : drop a jail'
+	echo '--shell               : acquire a root shell into the jail'
+	echo '--start               : start a jail (if not yet active)'
+	echo '--stop                : stop a jail (currently running)'
 	echo ''
 	echo 'Options for --install or --update:'
-	echo '-b, --binaries (default) : use compiled sets distributed by FreeBSD to create jails and update them with freebsd-update'
-	echo '-s, --sources            : use sources (have to be installed into /usr/src) to create or update jails'
+	echo '-s, --sources (default) : use sources (have to be installed into /usr/src) to create or update jails'
+	echo '-b, --binaries          : use compiled sets distributed by FreeBSD to create jails and update them with freebsd-update'
 	echo ''
 	echo 'General options:'
 	echo '-v, --verbose : display debug informations'
@@ -68,6 +75,29 @@ install_jail_precheck()
 	return 0
 }
 
+_mount_private()
+{
+	if [ -d /private/ ]; then
+		err "/private/ already exists"
+	fi
+	mkdir /private/
+	# instead of writing on disk to then delete the files, use RAM
+	mount -t tmpfs tmpfs /private/
+	for path in $SYMLINKED_PATHS; do
+		mkdir -p "/private/${path}"
+	done
+
+	return 0
+}
+
+_umount_private()
+{
+	umount /private/
+	rmdir /private/
+
+	return 0
+}
+
 create_skel_shared()
 {
 	chroot "${JAILS_ROOT}/${SKEL_NAME}" /bin/sh << EOC
@@ -75,6 +105,7 @@ create_skel_shared()
 		ln -sf dev/null kernel
 		mkdir -p usr/ports
 		chsh -s /bin/tcsh > /dev/null 2>&1
+		# TODO: inherit current timezone or make it configurable
 		tzsetup -s Europe/Paris
 		touch etc/fstab
 		(echo -n 'nameserver ' ; route get default | grep interface | cut -wf 3 | xargs ifconfig | grep inet | grep -v inet6 | cut -wf 3) > /etc/resolv.conf
@@ -87,7 +118,7 @@ create_skel_shared()
 		echo 'syslogd_flags="-ss"' >> etc/rc.conf
 		echo 'sshd_flags="-o ListenAddress=\$(route get default | grep interface | cut -wf 3 | xargs ifconfig | grep inet | grep -v inet6 | cut -wf 3)"' >> etc/rc.conf
 		echo 'clear_tmp_enable="YES"' >> etc/rc.conf
-		# TODO: inherit current locale
+		# TODO: inherit current locale or make it configurable
 		# /etc/csh.login - (t)csh
 		echo 'setenv LANG fr_FR.UTF-8' >> etc/csh.login
 		echo 'setenv MM_CHARSET UTF-8' >> etc/csh.login
@@ -96,6 +127,8 @@ create_skel_shared()
 		echo 'export MM_CHARSET=UTF-8' >> /etc/profile
 		# disable periodic
 		sed -i '' '/^[^#].*periodic/s/^/#/' etc/crontab
+		# mergemaster: skip some warnings - TODO: this doesn't seem to work (needs s#/#${JAILS_ROOT}/${SKEL_NAME}/#g?)
+		echo 'IGNORE_FILES="/root /var"' > etc/mergemaster.rc
 
 		# create symlink for security/ca_root_nss
 		ln -s /usr/local/share/certs/ca-root-nss.crt /etc/ssl/cert.pem
@@ -105,7 +138,7 @@ create_skel_shared()
 			mkdir -p "skel/\$(dirname \$path)"
 			mv "\$path" "skel/\$path"
 		done
-		for path in $SYMLINKED_PATHS $SYMLINKED_FILES $DUPED_FILES; do
+		for path in $SYMLINKED_FILES $DUPED_FILES; do # $SYMLINKED_PATHS
 			[ -e "\$path" ] && chflags -R noschg "\$path"
 			rm -fr "\$path"
 			ln -snf "/private/\$path" "\$path"
@@ -123,8 +156,6 @@ EOC
 # - /usr/obj/usr/src/usr.bin/uname/uname -U output is (strictly) less than FreeBSD version extracted from /usr/src/sys/sys/param.h
 _rebuild_world_if_needed()
 {
-	local OBJ_VERSION
-
 # 	echo "Updating sources..."
 # 	svnlite update /usr/src > /dev/null 2>&1 # TODO: redirect stderr to some file?
 	if [ ! -x /usr/obj/usr/src/usr.bin/uname/uname -o `/usr/obj/usr/src/usr.bin/uname/uname -U` -lt "${1}" ]; then
@@ -138,7 +169,8 @@ _is_update_needed()
 {
 	local JAIL_VERSION
 
-	readonly JAIL_VERSION=`chroot "${JAILS_ROOT}/${SKEL_NAME}" uname -U`
+	# NOTE: we can't rely on uname (from jail), it returns the value of the host
+	readonly JAIL_VERSION=`[ -f "${JAILS_ROOT}/${SKEL_NAME}/etc/VERSION" ] && cat "${JAILS_ROOT}/${SKEL_NAME}/etc/VERSION" || echo 0`
 
 	if [ "${JAIL_VERSION}" -ge "${1}" ]; then
 		info "The base jail does not need to be updated"
@@ -158,12 +190,19 @@ create_skel_from_sources()
 	install_jail_precheck "${SKEL_NAME}"
 
 	_rebuild_world_if_needed "${SRC_VERSION}"
-	echo "Installing world..."
+	_mount_private
+	for path in ${SYMLINKED_PATHS}; do
+		mkdir -p $(dirname "${JAILS_ROOT}/${SKEL_NAME}/${path}")
+		ln -snf "/private/${path}" "${JAILS_ROOT}/${SKEL_NAME}/${path}"
+	done
+	info "Installing world..."
 	make -C /usr/src installworld DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
-	echo "Populating etc/..."
+	info "Populating etc/..."
 	make -C /usr/src/etc distribution DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
-
+	# version workaround: keep real userland version number of the jail as /etc/VERSION, there is no way to retrieve it
+	/usr/obj/usr/src/usr.bin/uname/uname -U > "${JAILS_ROOT}/${SKEL_NAME}/etc/VERSION"
 	create_skel_shared
+	_umount_private
 }
 
 create_skel_from_binaries()
@@ -225,13 +264,18 @@ update_skel_from_sources()
 	local SRC_VERSION
 
 	readonly SRC_VERSION=`grep '#define[ ][ ]*__FreeBSD_version[ ][ ]*[[:digit:]][[:digit:]]*' /usr/src/sys/sys/param.h | cut -wf 3`
+
 	_is_update_needed "${SRC_VERSION}"
 	if [ $? -eq 0 ]; then
 		_rebuild_world_if_needed "${SRC_VERSION}"
 		mergemaster -p -D "${JAILS_ROOT}/${SKEL_NAME}"
 		echo "Installing world..."
+		_mount_private
 		make -C /usr/src installworld DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
 		mergemaster -PUFi --run-updates=always -D "${JAILS_ROOT}/${SKEL_NAME}"
+		_umount_private
+		# version workaround: update real userland version number in /etc/VERSION of the jail
+		/usr/obj/usr/src/usr.bin/uname/uname -U > "${JAILS_ROOT}/${SKEL_NAME}/etc/VERSION"
 		_post_update "${SRC_VERSION}"
 	fi
 }
@@ -320,37 +364,63 @@ do_update()
 	fi
 }
 
+# do_fix(name)
+do_fix()
+{
+	${__DIR__}/mounted -p "${JAILS_ROOT}/${1}" | while read mnt; do
+		umount "$mnt"
+	done
+}
+
 # do_shell(name)
 do_shell()
 {
 	jexec -l "${1}" login -f root
 }
 
+_is_jail_running()
+{
+	JID=`jls -j "${1}" jid 2> /dev/null || true`
+	[ -n "${JID}" ]
+
+	return $?
+}
+
 # do_start(name)
 do_start()
 {
-	JID=`jls -j "${1}" jid 2> /dev/null || true`
-	if [ -z "${JID}" ]; then
+	if ! _is_jail_running "${1}"; then
 		jail -c`${VERBOSE} && echo 'v'` "${1}"
+	else
+		info "jail ${1} is already running"
 	fi
 }
 
 # do_stop(name)
 do_stop()
 {
-	jail -r`${VERBOSE} && echo 'v'` "${1}"
+	if _is_jail_running "${1}"; then
+		if jail -r`${VERBOSE} && echo 'v'` "${1}"; then
+			if [ `${__DIR__}/mounted -p "${JAILS_ROOT}/${1}" | wc -l` -ne 0 ]; then
+				do_fix "${1}"
+			fi
+		fi
+	else
+		info "jail ${1} is not running"
+	fi
 }
 
 # do_stop(name)
 do_delete()
 {
-	# TODO: ask for confirmation
-	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
-		zfs destroy -r "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
-		[ -d "${JAILS_ROOT}/${1}" ] && rmdir "${JAILS_ROOT}/${1}"
-	else
-		chflags -R noschg "${JAILS_ROOT}/${1}"
-		rm -fr "${JAILS_ROOT}/${1}"
+	if ask "Delete jail ${1}?"; then
+		if echo "${USE_ZFS}" | grep -qi '^YES$'; then
+			zfs destroy -r "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
+			[ -d "${JAILS_ROOT}/${1}" ] && rmdir "${JAILS_ROOT}/${1}"
+		else
+			chflags -R noschg "${JAILS_ROOT}/${1}"
+			rm -fr "${JAILS_ROOT}/${1}"
+		fi
 	fi
 }
 
@@ -363,7 +433,7 @@ for var in "$@" ; do
 	--install)
 		ACTION='install'
 		;;
-	--update)
+	--update|--upgrade)
 		ACTION='update'
 		;;
 	--binary)
@@ -383,6 +453,9 @@ for var in "$@" ; do
 		;;
 	--verbose)
 		VERBOSE='true'
+		;;
+	--fix)
+		ACTION='fix'
 		;;
 	--*)
 		usage
@@ -417,6 +490,10 @@ shift $(( $OPTIND - 1 ))
 
 [ $# -eq 0 ] && usage
 [ -z "${ACTION}" ] && usage
+
+if [ ! -f "${__DIR__}/mounted" ]; then
+	cc "${__DIR__}/mounted.c" -o "${__DIR__}/mounted" -ljail
+fi
 
 for var in "$@" ; do
 	eval "do_${ACTION}" "${var}"

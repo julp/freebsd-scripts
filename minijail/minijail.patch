@@ -1,6 +1,6 @@
 Index: lib/libpam/modules/pam_unix/pam_unix.c
 ===================================================================
---- lib/libpam/modules/pam_unix/pam_unix.c	(revision 307225)
+--- lib/libpam/modules/pam_unix/pam_unix.c	(revision 311944)
 +++ lib/libpam/modules/pam_unix/pam_unix.c	(working copy)
 @@ -396,8 +396,12 @@
  		switch (old_pwd->pw_fields & _PWF_SOURCE) {
@@ -26,20 +26,42 @@ Index: lib/libpam/modules/pam_unix/pam_unix.c
  		case _PWF_NIS:
 Index: lib/libutil/_secure_path.c
 ===================================================================
---- lib/libutil/_secure_path.c	(revision 307225)
+--- lib/libutil/_secure_path.c	(revision 311944)
 +++ lib/libutil/_secure_path.c	(working copy)
-@@ -49,7 +49,7 @@
+@@ -23,6 +23,7 @@
+ __FBSDID("$FreeBSD$");
+ 
+ #include <sys/types.h>
++#include <sys/sysctl.h>
+ #include <sys/stat.h>
+ 
+ #include <errno.h>
+@@ -30,6 +31,8 @@
+ #include <stddef.h>
+ #include <syslog.h>
+ 
++static int (*statcalls[])(const char * restrict, struct stat * restrict) = { lstat, stat };
++
+ /*
+  * Check for common security problems on a given path
+  * It must be:
+@@ -46,10 +49,12 @@
+ _secure_path(const char *path, uid_t uid, gid_t gid)
+ {
+     int		r = -1;
++    int jailed = 0;
      struct stat	sb;
      const char	*msg = NULL;
++    size_t jailed_len = sizeof(jailed);
  
 -    if (lstat(path, &sb) < 0) {
-+    if (/*l*/stat(path, &sb) < 0) {
++    if (statcalls[0 == sysctlbyname("security.jail.jailed", &jailed, &jailed_len, NULL, 0) && jailed](path, &sb) < 0) {
  	if (errno == ENOENT) /* special case */
  	    r = -2;  /* if it is just missing, skip the log entry */
  	else
 Index: lib/libutil/gr_util.c
 ===================================================================
---- lib/libutil/gr_util.c	(revision 307225)
+--- lib/libutil/gr_util.c	(revision 311944)
 +++ lib/libutil/gr_util.c	(working copy)
 @@ -43,6 +43,8 @@
  #include <stdlib.h>
@@ -71,7 +93,7 @@ Index: lib/libutil/gr_util.c
  			errno = ENAMETOOLONG;
 Index: lib/libutil/pw_util.c
 ===================================================================
---- lib/libutil/pw_util.c	(revision 307225)
+--- lib/libutil/pw_util.c	(revision 311944)
 +++ lib/libutil/pw_util.c	(working copy)
 @@ -65,6 +65,8 @@
  #include <stdlib.h>
@@ -103,7 +125,7 @@ Index: lib/libutil/pw_util.c
  			errno = ENAMETOOLONG;
 Index: usr.bin/chpass/chpass.1
 ===================================================================
---- usr.bin/chpass/chpass.1	(revision 307225)
+--- usr.bin/chpass/chpass.1	(revision 311944)
 +++ usr.bin/chpass/chpass.1	(working copy)
 @@ -45,6 +45,7 @@
  .Op Fl p Ar encpass
@@ -135,7 +157,7 @@ Index: usr.bin/chpass/chpass.1
  Possible display items are as follows:
 Index: usr.bin/chpass/chpass.c
 ===================================================================
---- usr.bin/chpass/chpass.c	(revision 307225)
+--- usr.bin/chpass/chpass.c	(revision 311944)
 +++ usr.bin/chpass/chpass.c	(working copy)
 @@ -82,6 +82,7 @@
  	struct passwd lpw, *old_pw, *pw;
@@ -187,7 +209,7 @@ Index: usr.bin/chpass/chpass.c
  			pw_fini();
 Index: usr.bin/passwd/passwd.1
 ===================================================================
---- usr.bin/passwd/passwd.1	(revision 307225)
+--- usr.bin/passwd/passwd.1	(revision 311944)
 +++ usr.bin/passwd/passwd.1	(working copy)
 @@ -37,6 +37,7 @@
  .Sh SYNOPSIS
@@ -211,7 +233,7 @@ Index: usr.bin/passwd/passwd.1
  When changing local or NIS password, the next password change date
 Index: usr.bin/passwd/passwd.c
 ===================================================================
---- usr.bin/passwd/passwd.c	(revision 307225)
+--- usr.bin/passwd/passwd.c	(revision 311944)
 +++ usr.bin/passwd/passwd.c	(working copy)
 @@ -55,11 +55,12 @@
  
@@ -261,7 +283,7 @@ Index: usr.bin/passwd/passwd.c
  	pam_check("pam_chauthtok");
 Index: usr.sbin/jail/config.c
 ===================================================================
---- usr.sbin/jail/config.c	(revision 307225)
+--- usr.sbin/jail/config.c	(revision 311944)
 +++ usr.sbin/jail/config.c	(working copy)
 @@ -371,8 +371,10 @@
  			free(dp->name);
@@ -277,7 +299,7 @@ Index: usr.sbin/jail/config.c
  	} else {
 Index: usr.sbin/jail/jaillex.l
 ===================================================================
---- usr.sbin/jail/jaillex.l	(revision 307225)
+--- usr.sbin/jail/jaillex.l	(revision 311944)
 +++ usr.sbin/jail/jaillex.l	(working copy)
 @@ -71,9 +71,14 @@
  			}
@@ -298,7 +320,7 @@ Index: usr.sbin/jail/jaillex.l
  				instr = 0;
 Index: usr.sbin/jail/jailp.h
 ===================================================================
---- usr.sbin/jail/jailp.h	(revision 307225)
+--- usr.sbin/jail/jailp.h	(revision 311944)
 +++ usr.sbin/jail/jailp.h	(working copy)
 @@ -52,6 +52,7 @@
  #define PF_CONV		0x40	/* Parameter duplicated in converted form */
@@ -310,7 +332,7 @@ Index: usr.sbin/jail/jailp.h
  #define JF_SET		0x0002	/* -m */
 Index: usr.sbin/jail/jailparse.y
 ===================================================================
---- usr.sbin/jail/jailparse.y	(revision 307225)
+--- usr.sbin/jail/jailparse.y	(revision 311944)
 +++ usr.sbin/jail/jailparse.y	(working copy)
 @@ -47,7 +47,8 @@
  	char			*cs;
@@ -349,7 +371,7 @@ Index: usr.sbin/jail/jailparse.y
  		TAILQ_CONCAT(&$$->val, $2, tq);
 Index: usr.sbin/pw/grupd.c
 ===================================================================
---- usr.sbin/pw/grupd.c	(revision 307225)
+--- usr.sbin/pw/grupd.c	(revision 311944)
 +++ usr.sbin/pw/grupd.c	(working copy)
 @@ -42,7 +42,7 @@
  {
@@ -362,7 +384,7 @@ Index: usr.sbin/pw/grupd.c
  }
 Index: usr.sbin/pw/pw.c
 ===================================================================
---- usr.sbin/pw/pw.c	(revision 307225)
+--- usr.sbin/pw/pw.c	(revision 311944)
 +++ usr.sbin/pw/pw.c	(working copy)
 @@ -118,8 +118,8 @@
  	arg1 = NULL;
@@ -385,7 +407,7 @@ Index: usr.sbin/pw/pw.c
  				break;
 Index: usr.sbin/pw/pw_utils.c
 ===================================================================
---- usr.sbin/pw/pw_utils.c	(revision 307225)
+--- usr.sbin/pw/pw_utils.c	(revision 311944)
 +++ usr.sbin/pw/pw_utils.c	(working copy)
 @@ -71,7 +71,7 @@
  
@@ -398,7 +420,7 @@ Index: usr.sbin/pw/pw_utils.c
  
 Index: usr.sbin/pw/pwupd.c
 ===================================================================
---- usr.sbin/pw/pwupd.c	(revision 307225)
+--- usr.sbin/pw/pwupd.c	(revision 311944)
 +++ usr.sbin/pw/pwupd.c	(working copy)
 @@ -47,7 +47,7 @@
  {
@@ -420,7 +442,7 @@ Index: usr.sbin/pw/pwupd.c
  	}
 Index: usr.sbin/pw/pwupd.h
 ===================================================================
---- usr.sbin/pw/pwupd.h	(revision 307225)
+--- usr.sbin/pw/pwupd.h	(revision 311944)
 +++ usr.sbin/pw/pwupd.h	(working copy)
 @@ -82,7 +82,8 @@
  

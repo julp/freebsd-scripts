@@ -115,6 +115,7 @@ create_skel_shared()
 		# /etc/rc.conf
 		echo 'hostname="\$(/bin/hostname)"' >> etc/rc.conf
 		#echo 'sendmail_enable="NO"' >> etc/rc.conf
+		echo 'sendmail_cert_create="NO"' >> etc/rc.conf
 		echo 'syslogd_flags="-ss"' >> etc/rc.conf
 		echo 'sshd_flags="-o ListenAddress=\$(route get default | grep interface | cut -wf 3 | xargs ifconfig | grep inet | grep -v inet6 | cut -wf 3)"' >> etc/rc.conf
 		echo 'clear_tmp_enable="YES"' >> etc/rc.conf
@@ -170,9 +171,9 @@ _is_update_needed()
 	local JAIL_VERSION
 
 	# NOTE: we can't rely on uname (from jail), it returns the value of the host
-	readonly JAIL_VERSION=`[ -f "${JAILS_ROOT}/${SKEL_NAME}/etc/VERSION" ] && cat "${JAILS_ROOT}/${SKEL_NAME}/etc/VERSION" || echo 0`
+	readonly JAIL_VERSION=`"${JAILS_ROOT}/${SKEL_NAME}/bin/freebsd-version" -u`
 
-	if [ "${JAIL_VERSION}" -ge "${1}" ]; then
+	if [ "${JAIL_VERSION}" = "${1}" ]; then
 		info "The base jail does not need to be updated"
 		return 1
 	else
@@ -199,8 +200,6 @@ create_skel_from_sources()
 	make -C /usr/src installworld DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
 	info "Populating etc/..."
 	make -C /usr/src/etc distribution DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
-	# version workaround: keep real userland version number of the jail as /etc/VERSION, there is no way to retrieve it
-	/usr/obj/usr/src/usr.bin/uname/uname -U > "${JAILS_ROOT}/${SKEL_NAME}/etc/VERSION"
 	create_skel_shared
 	_umount_private
 }
@@ -263,10 +262,9 @@ update_skel_from_sources()
 {
 	local SRC_VERSION
 
-	readonly SRC_VERSION=`grep '#define[ ][ ]*__FreeBSD_version[ ][ ]*[[:digit:]][[:digit:]]*' /usr/src/sys/sys/param.h | cut -wf 3`
-
-	_is_update_needed "${SRC_VERSION}"
-	if [ $? -eq 0 ]; then
+    readonly SRC_VERSION=`[ -x /usr/obj/usr/src/bin/freebsd-version/freebsd-version ] && /usr/obj/usr/src/bin/freebsd-version/freebsd-version -u || echo "unknown"`
+    _is_update_needed "${SRC_VERSION}"
+    if [ $? -eq 0 ]; then
 		_rebuild_world_if_needed "${SRC_VERSION}"
 		mergemaster -p -D "${JAILS_ROOT}/${SKEL_NAME}"
 		echo "Installing world..."

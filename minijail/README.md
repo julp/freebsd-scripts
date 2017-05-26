@@ -38,12 +38,16 @@ exec.start = "/bin/sh /etc/rc";
 exec.stop = "/bin/sh /etc/rc.shutdown";
 
 mount.nodevfs; # have to be done by hand else it fails, done too early
-exec.prestart = "/sbin/mount -t nullfs -o ro /var/jails/skel $path";
-exec.prestart += "/sbin/mount -t devfs . $path/dev";
-exec.prestart += "/sbin/mount -t zfs zroot/$path $path/private";
-exec.poststop = "/sbin/umount zroot$path";
-exec.poststop += "/sbin/umount $path/dev";
-exec.poststop += "/sbin/umount $path";
+exec.prestart =
+    "/sbin/mount -t nullfs -o ro /var/jails/skel $path",
+    "/sbin/mount -t devfs . $path/dev",
+    "/sbin/mount -t zfs zroot/$path $path/private"
+;
+exec.poststop =
+    "/sbin/umount zroot$path",
+    "/sbin/umount $path/dev",
+    "/sbin/umount $path"
+;
 
 foo {
 	jid = 1;
@@ -110,5 +114,6 @@ This patch:
 * add an operator (`[=`) to prepend item to lists in jail.conf(5) (and added `]=`, an alias for `+=`)
 
 TODO:
+* newsyslog: "better" rotation of /var/log/messages?
 * /etc/mail/certs needs to be writable (sendmail)?
 * borbid installation of base/skel jail from binaries and apply the patch in the process?

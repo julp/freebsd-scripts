@@ -4,7 +4,7 @@ Disclaimer:
 zfsbackup: backup a ZFS file system to an external (local or remote) disk/pool
 
 Settings to define in /usr/local/etc/zfsbackup.conf:
-* LOCAL_POOL_NAME (default: 'tank'): the name of the pool to send/backup
+* LOCAL_POOL_NAME (default: result of `zfs get -H -o value name / | cut -d / -f 1`): the name of the pool to send/backup
 * REMOTE_POOL_NAME (default: 'backup'): the name of the pool which receives the backup
 * REMOTE_HOST (default: ''): name of the remote host (keep empty if on the same host)
 * REMOTE_USER (default: ''): name of the remote user name (if you need to explicit one)

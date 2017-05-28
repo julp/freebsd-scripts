@@ -8,7 +8,7 @@
 
 ##### local settings
 # name of the local pool to backup
-: ${LOCAL_POOL_NAME:='tank'}
+: ${LOCAL_POOL_NAME:=`zfs get -H -o value name / | cut -d / -f 1`}
 # delete snapshots after sending it?
 # originally planned with use of bookmarks, with -R flag on zfs send, you need to keep locally the snapshots you want to have on both sides
 # : ${DROP_SNAPSHOT:='NO'}

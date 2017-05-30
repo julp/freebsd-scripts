@@ -41,10 +41,10 @@ mount.nodevfs; # have to be done by hand else it fails, done too early
 exec.prestart =
     "/sbin/mount -t nullfs -o ro /var/jails/skel $path",
     "/sbin/mount -t devfs . $path/dev",
-    "/sbin/mount -t zfs zroot/$path $path/private"
+    "/sbin/mount -t zfs zroot/$path $path/private" # remove this if you don't use ZFS
 ;
 exec.poststop =
-    "/sbin/umount zroot$path",
+    "/sbin/umount zroot$path", # remove this if you don't use ZFS
     "/sbin/umount $path/dev",
     "/sbin/umount $path"
 ;
@@ -108,7 +108,7 @@ for path in usr.bin/passwd/ lib/libpam/ usr.bin/chpass/ usr.sbin/pw lib/libutil;
 (run `svnlite revert -R /usr/src` before `svnlite update /usr/src` then reapply the patch)
 
 This patch:
-* allows /etc/login.conf to be (and follow) a symlink
+* allows (only for jails) /etc/login.conf to be (and follow) a symlink
 * changes the default path from /etc to /private/etc for pw_init(3) and gr_init(3) in jails
 * "fix" pw(8) to no longer hardcodes conf.etcpath to "/etc" and rely on default behaviour of pw_init/gr_init
 * add an operator (`[=`) to prepend item to lists in jail.conf(5) (and added `]=`, an alias for `+=`)
@@ -117,3 +117,4 @@ TODO:
 * newsyslog: "better" rotation of /var/log/messages?
 * /etc/mail/certs needs to be writable (sendmail)?
 * borbid installation of base/skel jail from binaries and apply the patch in the process?
+* mergemaster "hangs" and mtree complain to not found its database?

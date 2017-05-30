@@ -1,14 +1,14 @@
 #!/bin/sh -e
 
-# readonly __DIR__=`cd $(dirname -- "${0}"); pwd -P`
+readonly __DIR__=`cd $(dirname -- "${0}"); pwd -P`
 
-# . ${__DIR__}/../_routines.inc.sh
+. ${__DIR__}/../_routines.inc.sh
 
 [ -s /usr/local/etc/zfsbackup.conf ] && . /usr/local/etc/zfsbackup.conf
 
 ##### local settings
 # name of the local pool to backup
-: ${LOCAL_POOL_NAME:=`zfs get -H -o value name / | cut -d / -f 1`}
+: ${LOCAL_POOL_NAME:=`zpool_name /`}
 # delete snapshots after sending it?
 # originally planned with use of bookmarks, with -R flag on zfs send, you need to keep locally the snapshots you want to have on both sides
 # : ${DROP_SNAPSHOT:='NO'}

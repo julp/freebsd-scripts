@@ -32,10 +32,6 @@ readonly SYMLINKED_PATHS="etc/rc.conf.d home usr/local tmp var mnt"
 : ${SKIP_CLEAN_ON_BUILDWORLD:='NO'}
 
 VERBOSE='false'
-zpool=`zfs get -H -o value name "${JAILS_ROOT}"`
-readonly ZPOOL_NAME=${zpool%%/*} # `zfs get -Ho value name "${JAILS_ROOT}" | cut -d / -f 1`
-
-readonly USE_ZFS="`(df -T ${JAILS_ROOT} | tail -n 1 | cut -wf 2 | grep -q '^zfs$' && echo YES) || echo NO`"
 
 usage()
 {
@@ -48,6 +44,7 @@ usage()
 	echo '--shell               : acquire a root shell into the jail'
 	echo '--start               : start a jail (if not yet active)'
 	echo '--stop                : stop a jail (currently running)'
+	echo '--deploy=<host>       : copy a jail on remote <host>'
 	echo ''
 	echo 'Options for --install or --update:'
 	echo '-s, --sources (default) : use sources (have to be installed into /usr/src) to create or update jails'
@@ -66,8 +63,8 @@ install_jail_precheck()
 		exit 1
 	fi
 
-	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
-		zfs create -p "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
+	if is_on_zfs "${JAILS_ROOT}"; then
+		zfs create -p "`zpool_name "${JAILS_ROOT}"`${JAILS_ROOT}/${1}"
 	else
 		mkdir -p "${JAILS_ROOT}/${1}"
 	fi
@@ -145,23 +142,8 @@ create_skel_shared()
 			ln -snf "/private/\$path" "\$path"
 		done
 EOC
-	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
-		zfs snapshot "${ZPOOL_NAME}${JAILS_ROOT}/${SKEL_NAME}@created"
-	fi
-}
-
-# _rebuild_if_needed(to)
-#
-# Run `make buildworld` if:
-# - /usr/obj/usr/src/usr.bin/uname/uname doesn't exist
-# - /usr/obj/usr/src/usr.bin/uname/uname -U output is (strictly) less than FreeBSD version extracted from /usr/src/sys/sys/param.h
-_rebuild_world_if_needed()
-{
-# 	echo "Updating sources..."
-# 	svnlite update /usr/src > /dev/null 2>&1 # TODO: redirect stderr to some file?
-	if [ ! -x /usr/obj/usr/src/usr.bin/uname/uname -o `/usr/obj/usr/src/usr.bin/uname/uname -U` -lt "${1}" ]; then
-		echo "Compiling world, this may take some time..."
-		make -C /usr/src -j$((`sysctl -n hw.ncpu`+1)) buildworld NO_CLEAN=${SKIP_CLEAN_ON_BUILDWORLD} > /dev/null 2>&1 # TODO: redirect stderr to some file?
+	if is_on_zfs "${JAILS_ROOT}"; then
+		zfs snapshot "`zpool_name "${JAILS_ROOT}"`${JAILS_ROOT}/${SKEL_NAME}@created"
 	fi
 }
 
@@ -190,18 +172,18 @@ create_skel_from_sources()
 
 	install_jail_precheck "${SKEL_NAME}"
 
-	_rebuild_world_if_needed "${SRC_VERSION}"
-	_mount_private
-	for path in ${SYMLINKED_PATHS}; do
-		mkdir -p $(dirname "${JAILS_ROOT}/${SKEL_NAME}/${path}")
-		ln -snf "/private/${path}" "${JAILS_ROOT}/${SKEL_NAME}/${path}"
-	done
-	info "Installing world..."
-	make -C /usr/src installworld DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
-	info "Populating etc/..."
-	make -C /usr/src/etc distribution DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
-	create_skel_shared
-	_umount_private
+	if lazily_rebuild_world "${JAILS_ROOT}/${SKEL_NAME}"; then
+		_mount_private
+		for path in ${SYMLINKED_PATHS}; do
+			mkdir -p $(dirname "${JAILS_ROOT}/${SKEL_NAME}/${path}")
+			ln -snf "/private/${path}" "${JAILS_ROOT}/${SKEL_NAME}/${path}"
+		done
+		lazily_update_world "${JAILS_ROOT}/${SKEL_NAME}"
+		info "Populating etc/..."
+		make -C /usr/src/etc distribution DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
+		create_skel_shared
+		_umount_private
+	fi
 }
 
 create_skel_from_binaries()
@@ -242,7 +224,7 @@ create_skel_from_binaries()
 # void _post_update(to)
 _post_update()
 {
-# 	zfs snapshot "${ZPOOL_NAME}/${JAILS_ROOT}/${SKEL_NAME}@${1}"
+# 	zfs snapshot "`zpool_name "${JAILS_ROOT}"`${JAILS_ROOT}/${SKEL_NAME}@${1}"
 }
 
 update_skel_from_binaries()
@@ -250,8 +232,7 @@ update_skel_from_binaries()
 	local WORLD_VERSION
 
 	readonly WORLD_VERSION=`uname -U`
-	_is_update_needed "${WORLD_VERSION}"
-	if [ $? -eq 0 ]; then
+	if _is_update_needed "${WORLD_VERSION}"; then
 		[ -f /etc/freebsd-update_for_jails.conf ] || ( grep -ve '#' -e '^$' -we Components -we BackupKernel /etc/freebsd-update.conf ; echo 'Components world' ; echo 'BackupKernel no' ) > /etc/freebsd-update_for_jails.conf
 		freebsd-update -b "${JAILS_ROOT}/${SKEL_NAME}" -f /etc/freebsd-update_for_jails.conf fetch install
 		_post_update "${WORLD_VERSION}"
@@ -260,21 +241,12 @@ update_skel_from_binaries()
 
 update_skel_from_sources()
 {
-	local SRC_VERSION
-
-    readonly SRC_VERSION=`[ -x /usr/obj/usr/src/bin/freebsd-version/freebsd-version ] && /usr/obj/usr/src/bin/freebsd-version/freebsd-version -u || echo "unknown"`
-    _is_update_needed "${SRC_VERSION}"
-    if [ $? -eq 0 ]; then
-		_rebuild_world_if_needed "${SRC_VERSION}"
-		mergemaster -p -D "${JAILS_ROOT}/${SKEL_NAME}"
-		echo "Installing world..."
+	if lazily_rebuild_world "${JAILS_ROOT}/${SKEL_NAME}"; then
 		_mount_private
-		make -C /usr/src installworld DESTDIR="${JAILS_ROOT}/${SKEL_NAME}" > /dev/null 2>&1 # TODO: redirect stderr to some file?
-		mergemaster -PUFi --run-updates=always -D "${JAILS_ROOT}/${SKEL_NAME}"
-		_umount_private
-		# version workaround: update real userland version number in /etc/VERSION of the jail
-		/usr/obj/usr/src/usr.bin/uname/uname -U > "${JAILS_ROOT}/${SKEL_NAME}/etc/VERSION"
-		_post_update "${SRC_VERSION}"
+		if lazily_update_world "${JAILS_ROOT}/${SKEL_NAME}"; then
+			_umount_private
+			_post_update "`${JAILS_ROOT}/${SKEL_NAME}/bin/freebsd-version -u`"
+		fi
 	fi
 }
 
@@ -295,8 +267,9 @@ update_jail()
 install_jail()
 {
 	install_jail_precheck "${1}"
+	local ZPOOL_NAME=`zpool_name "${JAILS_ROOT}"`
 
-	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
+	if is_on_zfs "${JAILS_ROOT}"; then
 		zfs set mountpoint="${JAILS_ROOT}/${1}" "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
 # 		zfs mount "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
 	fi
@@ -321,12 +294,12 @@ install_jail()
 			DISTDIR=${WRKDIRPREFIX}/distfiles
 			PACKAGES=${WRKDIRPREFIX}/packages
 
-			OPTIONS_UNSET_FORCE=EXAMPLES MAN3 NLS DOCS DOC HELP
+			OPTIONS_UNSET_FORCE=EXAMPLES MANPAGES MAN3 NLS DOCS DOC HELP
 			security_ca_root_nss_UNSET_FORCE=ETCSYMLINK
 		EOS
 	) > "${JAILS_ROOT}/${1}/etc/make.conf"
 # 	umount "${JAILS_ROOT}/${1}/dev" "${JAILS_ROOT}/${1}"
-	if echo "${USE_ZFS}" | grep -qi '^YES$'; then
+	if is_on_zfs "${JAILS_ROOT}"; then
 		zfs umount "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
 		zfs set canmount=noauto "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
 	fi
@@ -412,14 +385,74 @@ do_stop()
 do_delete()
 {
 	if ask "Delete jail ${1}?"; then
-		if echo "${USE_ZFS}" | grep -qi '^YES$'; then
-			zfs destroy -r "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
+		if is_on_zfs "${JAILS_ROOT}"; then
+			zfs destroy -r "`zpool_name "${JAILS_ROOT}"`${JAILS_ROOT}/${1}"
 			[ -d "${JAILS_ROOT}/${1}" ] && rmdir "${JAILS_ROOT}/${1}"
 		else
 			chflags -R noschg "${JAILS_ROOT}/${1}"
 			rm -fr "${JAILS_ROOT}/${1}"
 		fi
 	fi
+}
+
+# do_deploy(name)
+do_deploy()
+{
+	local REMOTE_HOST=`echo "${HOST}" | cut -d ':' -f 1`
+	local REMOTE_PATH=`echo "${HOST}" | cut -d ':' -f 2-`
+
+	echo "TODO: deploy '${1}' on '${REMOTE_HOST}' (${REMOTE_PATH})"
+
+	if is_on_zfs "${JAILS_ROOT}"; then
+		local ZFS_HINTS=$(
+			#cat <<-EOC
+			ssh "root@${REMOTE_HOST}" /bin/sh <<-EOC
+				if df -T "${REMOTE_PATH}" | tail -n 1 | cut -wf 2 | grep -q '^zfs$'; then
+					ZPOOL_NAME=\$(zfs get -H -o value name "${REMOTE_PATH}" | cut -d / -f 1)
+
+					# TODO: echo une chaîne donnant des infos ? (ZPOOL_NAME + DERNIER SNAPSHOT ?)
+					# \$(zfs list -Hd 1 -t snapshot "\${ZPOOL_NAME}${REMOTE_PATH}/${1}" | wc -l)
+					echo "\${ZPOOL_NAME}:"
+					if [ ! -e "${REMOTE_PATH}" ]; then
+						echo 'zfs create -p "\${ZPOOL_NAME}${REMOTE_PATH}/${1}"'
+						exit 0
+					elif zfs get -Ho value name "\${ZPOOL_NAME}${REMOTE_PATH}" > /dev/null 2>&1; then
+						exit 0
+					fi
+				fi
+
+				if [ ! -e "${REMOTE_PATH}" ]; then
+					mkdir -p "${REMOTE_PATH}/${1}"
+				fi
+
+				exit 1
+			EOC
+		)
+		if [ $? -eq 0 ]; then
+			local LOCAL_ZPOOL_NAME=`zpool_name "${JAILS_ROOT}"`
+			local REMOTE_ZPOOL_NAME=`echo "${ZFS_HINTS}" | cut -d ':' -f 1`
+			#zfs send -Ri `( for snap in $(zfs list -Hrd 1 -t snapshot -o name ${LOCAL_ZPOOL_NAME}); do zfs get -Hpo name,value creation "${snap}"; done ) | sort -rnk 2 | tail -n 1 | cut -f 1` "${SNAPSHOT_NAME}" | ssh "root@${REMOTE_HOST}" zfs receive -v -sduF "${REMOTE_ZPOOL_NAME}${REMOTE_PATH}/${1}"
+			return 0
+		fi
+	fi
+	# fallback to rsync
+	#rsync -avhz --progress "${JAILS_ROOT}/${1}" "root@${REMOTE_HOST}:${REMOTE_PATH}/${1}"
+
+	# if both systems seem to use ZFS (zfs send)
+	#if is_on_zfs "${JAILS_ROOT}" && ssh "root@${REMOTE_HOST}" "df -T \"${REMOTE_PATH}\" | tail -n 1 | cut -wf 2 | grep -q '^zfs$'"; then
+		#local REMOTE_ZPOOL=`ssh "root@${REMOTE_HOST}" "zfs get -H -o value name '${REMOTE_PATH}'" | cut -d / -f 1`
+		##local REMOTE_ZPOOL_NAME=${REMOTE_ZPOOL%%/*}
+
+		## if jail directory doesn't exist or exist and is a ZFS filesystem => zfs send
+		#if ssh "root@${REMOTE_HOST}" "zfs get -Ho value name '${REMOTE_ZPOOL}${REMOTE_PATH}'" > /dev/null 2>&1; then
+			#echo "ZFS on both"
+			#return 0
+		##else
+			##echo "ZFS found but the jails doesn't have its own ZFS filesystem"
+		#fi
+	#fi
+	# else (rsync)
+	#echo "not ZFS on both (rsync)"
 }
 
 newopts=""
@@ -454,6 +487,10 @@ for var in "$@" ; do
 		;;
 	--fix)
 		ACTION='fix'
+		;;
+	--deploy=*)
+		ACTION='deploy'
+		HOST=${var#--deploy=}
 		;;
 	--*)
 		usage

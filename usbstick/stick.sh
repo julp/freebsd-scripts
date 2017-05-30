@@ -1,12 +1,10 @@
-#!/bin/sh
-
-set -e
+#!/bin/sh -e
 
 readonly __DIR__=`cd $(dirname -- "${0}"); pwd -P`
 
 . ${__DIR__}/../_routines.inc.sh
 
-readonly LABEL_BOOT="gpefiboot"
+readonly LABEL_BOOT="freebsd-boot"
 readonly LABEL_ROOT="freebsd-root"
 
 usage()
@@ -30,13 +28,15 @@ _mount()
 # 		err "${MOUNTPOINT} is not a directory"
 # 		exit 1
 # 	fi
-	mount -t ufs "/dev/${DEVICE}p3" "${MOUNTPOINT}" # TODO: use label (/dev/gpt/freebsd-root) instead of /dev/da0p3?
+	mount -t ufs "/dev/${DEVICE}p3" "${MOUNTPOINT}" # TODO: use label (/dev/gpt/${LABEL_ROOT}) instead of /dev/da0p3?
 }
 
 _rebuild_sources_if_needed()
 {
-	make -C /usr/src -j$((`sysctl -n hw.ncpu`+1)) buildworld NO_CLEAN=YES
+	lazily_rebuild_world "${MOUNTPOINT}"
+	#if [ $? -eq 0 ]; then
 	make -C /usr/src buildkernel NO_CLEAN=YES # TODO: choose KERNCONF?
+	#fi
 }
 
 do_unmount()
@@ -47,14 +47,18 @@ do_unmount()
 # NOTE: usb stick is mounted but not unmounted
 do_create()
 {
-	# TODO: ask for confirmation
+	if ! ask "Are you sure to entirely wipe out ${DEVICE}?"; then
+		info "Aborted, ${DEVICE} remains intact"
+		return 1
+	fi
+
 	gpart destroy -F "${DEVICE}"
 	gpart create -s gpt "${DEVICE}"
 	gpart add -t freebsd-boot -l gpboot -b 40 -s 512K "${DEVICE}"
 	gpart bootcode -b /boot/pmbr -p /boot/gptboot -i 1 "${DEVICE}"
 	gpart add -t efi -l "${LABEL_BOOT}" -a4k -s492k "${DEVICE}"
 	newfs_msdos "/dev/${DEVICE}p2"
-	mount -t msdosfs "/dev/${DEVICE}p2" "${MOUNTPOINT}"
+	mount -t msdosfs "/dev/${DEVICE}p2" "${MOUNTPOINT}" # TODO: use label (/dev/gpt/${LABEL_BOOT}) instead of /dev/da0p2?
 	mkdir -p "${MOUNTPOINT}/EFI/BOOT"
 	cp /boot/boot1.efi "${MOUNTPOINT}/EFI/BOOT/"
 	umount "${MOUNTPOINT}"
@@ -101,6 +105,7 @@ do_create()
 			EOF
 		) >> /etc/rc.conf
 EOC
+	warn "Before unplugging your thumb drive, don't forget to umount it!"
 }
 
 # NOTE: usb stick mounted but not unmounted

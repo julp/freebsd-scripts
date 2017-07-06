@@ -29,11 +29,12 @@ _mount()
 # 		exit 1
 # 	fi
 	mount -t ufs "/dev/${DEVICE}p3" "${MOUNTPOINT}" # TODO: use label (/dev/gpt/${LABEL_ROOT}) instead of /dev/da0p3?
+	#mount -t ufs "/dev/gpt/${LABEL_ROOT}" "${MOUNTPOINT}"
 }
 
 _rebuild_sources_if_needed()
 {
-	lazily_rebuild_world "${MOUNTPOINT}"
+	lazily_rebuild_world "/" || true
 	#if [ $? -eq 0 ]; then
 	make -C /usr/src buildkernel NO_CLEAN=YES # TODO: choose KERNCONF?
 	#fi
@@ -41,7 +42,7 @@ _rebuild_sources_if_needed()
 
 do_unmount()
 {
-	unmount "${MOUNTPOINT}"
+	umount "${MOUNTPOINT}"
 }
 
 # NOTE: usb stick is mounted but not unmounted
@@ -63,10 +64,11 @@ do_create()
 	cp /boot/boot1.efi "${MOUNTPOINT}/EFI/BOOT/"
 	umount "${MOUNTPOINT}"
 	gpart add -t freebsd-ufs -l "${LABEL_ROOT}" -b 1M "${DEVICE}"
+	newfs -U "/dev/${DEVICE}p3" # TODO: use label (/dev/gpt/${LABEL_ROOT}) instead of /dev/da0p3?
 
 	_rebuild_sources_if_needed
 	_mount
-	make DESTDIR="${MOUNTPOINT}" -C /usr/src installkernel installworld distrib-dirs distribution
+	make DESTDIR="${MOUNTPOINT}" WITHOUT_DEBUG_FILES=YES -C /usr/src installkernel installworld distrib-dirs distribution
 	chroot "${MOUNTPOINT}" /bin/sh << EOC
 		chsh -s /bin/tcsh
 
@@ -114,7 +116,7 @@ do_upgrade()
 	_mount
 	_rebuild_sources_if_needed
 	mergemaster -p -D "${MOUNTPOINT}"
-	make DESTDIR="${MOUNTPOINT}" -C /usr/src installkernel installworld
+	make DESTDIR="${MOUNTPOINT}" WITHOUT_DEBUG_FILES=YES -C /usr/src installkernel installworld
 	mergemaster -iF --run-updates=always -D "${MOUNTPOINT}"
 }
 
@@ -128,10 +130,10 @@ do_shell()
 newopts=""
 for var in "$@" ; do
 	case "$var" in
-	--device)
+	--device=*)
 		DEVICE="${var#--device=}"
 		;;
-	--mountpoint)
+	--mountpoint=*)
 		MOUNTPOINT="${var#--mountpoint=}"
 		;;
 	--shell|--create|--upgrade|--unmount)

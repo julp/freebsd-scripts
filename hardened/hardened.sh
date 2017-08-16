@@ -29,7 +29,7 @@ do_setup()
 {
 	# TODO: ZFS support
 	# NOTE: list of disks : sysctl kern.disks
-	# NOTE: size of a disk in bytes: diskinfo ada0 | cut -wf 3
+	# NOTE: size of a disk in bytes: diskinfo "${DEVICE}" | cut -wf 3
 
 	gpart destroy -F "${DEVICE}"
 	gpart create -s gpt "${DEVICE}"
@@ -98,11 +98,11 @@ do_setup()
 		echo '/dev/gpt/${LABEL__} / ufs ro,noatime 1 1' >> /etc/fstab
 		# TODO: 1 1 ?
 		#if ! $ZFS; then
-			echo '/dev/gpt/${LABEL_ETC} /etc ufs rw,noatime,noexec,nosuid 1 1' >> /etc/fstab
-			echo '/dev/gpt/${LABEL_USR_LOCAL_ETC} /usr/local/etc ufs rw,noatime,noexec,nosuid 1 1' >> /etc/fstab
-			echo '/dev/gpt/${LABEL_ROOT} /root ufs rw,noatime,nosuid 1 1' >> /etc/fstab
-			echo '/dev/gpt/${LABEL_VAR} /var ufs rw,noatime,noexec,nosuid 1 1' >> /etc/fstab
-			echo '/dev/gpt/${LABEL_USR_HOME} /usr/home ufs rw,noatime,nosuid 1 1' >> /etc/fstab
+			echo '/dev/gpt/${LABEL_ETC} /etc ufs rw,noatime,noexec,nosuid 2 2' >> /etc/fstab
+			echo '/dev/gpt/${LABEL_USR_LOCAL_ETC} /usr/local/etc ufs rw,noatime,noexec,nosuid 2 2' >> /etc/fstab
+			echo '/dev/gpt/${LABEL_ROOT} /root ufs rw,noatime,nosuid 2 2' >> /etc/fstab
+			echo '/dev/gpt/${LABEL_VAR} /var ufs rw,noatime,noexec,nosuid 2 2' >> /etc/fstab
+			echo '/dev/gpt/${LABEL_USR_HOME} /usr/home ufs rw,noatime,nosuid 2 2' >> /etc/fstab
 		#else
 			#echo 'zfs_enable="YES"' >> etc/rc.conf
 			#echo 'zfs_load="YES"' >> /boot/loader.conf

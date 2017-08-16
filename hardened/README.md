@@ -20,7 +20,7 @@ kern.securelevel = 3
 
 The remote host needs to boot an in-memory FreeBSD system with SSH running to install or upgrade it.
 
-This can be achieved with PXE or a memory stick (mfsbsd).
+This can be achieved with PXE or a live system.
 
 (on OVH, use a FreeBSD system as rescue and boot on it)
 

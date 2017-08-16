@@ -11,7 +11,7 @@ readonly __DIR__=`cd $(dirname -- "${0}"); pwd -P`
 . ${__DIR__}/../_routines.inc.sh
 
 # use vnet ? Default: use if available
-VNET=`sysctl -n kern.features.vimage`
+#VNET=`sysctl -n kern.features.vimage`
 
 # default cache directory
 BIN_CACHE_DIR="${HOME}/.binjailcache/$(uname -r)"
@@ -121,8 +121,8 @@ create_skel_shared()
 		echo 'setenv LANG fr_FR.UTF-8' >> etc/csh.login
 		echo 'setenv MM_CHARSET UTF-8' >> etc/csh.login
 		# /etc/profile - (ba|k|z)sh
-		echo 'export LANG=fr_FR.UTF-8' >> /etc/profile
-		echo 'export MM_CHARSET=UTF-8' >> /etc/profile
+		echo 'export LANG=fr_FR.UTF-8' >> etc/profile
+		echo 'export MM_CHARSET=UTF-8' >> etc/profile
 		# disable periodic
 		sed -i '' '/^[^#].*periodic/s/^/#/' etc/crontab
 		# mergemaster: skip some warnings - TODO: this doesn't seem to work (needs s#/#${JAILS_ROOT}/${SKEL_NAME}/#g?)
@@ -381,7 +381,7 @@ do_stop()
 	fi
 }
 
-# do_stop(name)
+# do_delete(name)
 do_delete()
 {
 	if ask "Delete jail ${1}?"; then

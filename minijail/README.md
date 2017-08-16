@@ -50,11 +50,11 @@ exec.poststop =
 ;
 
 foo {
-	jid = 1;
+    jid = 1;
 }
 
 bar {
-	jid = 2;
+    jid = 2;
 }
 ```
 
@@ -102,7 +102,7 @@ FAQ:
 ```
 cd /usr/src
 patch -p0 < /path/to/minijail/minijail.patch
-for path in usr.bin/passwd/ lib/libpam/ usr.bin/chpass/ usr.sbin/pw lib/libutil; do make -C "/usr/src/${path}" && make -C "/usr/src/${path}" install; done
+for path in usr.bin/passwd/ lib/libpam/ usr.bin/chpass/ usr.sbin/pw usr.sbin/jail lib/libutil; do make -C "/usr/src/${path}" && make -C "/usr/src/${path}" install; done
 ```
 
 (run `svnlite revert -R /usr/src` before `svnlite update /usr/src` then reapply the patch)

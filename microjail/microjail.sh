@@ -48,6 +48,9 @@ do_install()
 		mkdir -p "${JAILS_ROOT}/${1}"
 	fi
 
+	# TODO: make -C /usr/src/release NOPORTS=YES NOSRC=YES NODOC=YES WITHOUT_DEBUG_FILES=YES base.txz
+	# then use base.txz or cp /usr/obj/usr/src/release/dist/base/{.*,etc,var,root,boot} "${JAILS_ROOT}/${1}/"
+	# NOTE: /usr/obj/usr/src/release/ takes 379Mo (tmpfs)
 	tar -xJf ${__DIR__}/base.txz --include=.cshrc --include=.profile --include='etc/*' --include='var/*' --include='root/*' --include='boot/*' -C "${JAILS_ROOT}/${1}"
 	rm -fr "${JAILS_ROOT}/${1}/boot" # TODO: better, mount it (before tar) as tmpfs (and umount it here)?
 	for path in ${MOUNT_RO} ${MOUNT_RO_NOSUID} ${MOUNT_RO_NOSUID_NOEXEC} /var /dev /etc /tmp; do

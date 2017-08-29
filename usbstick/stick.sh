@@ -61,7 +61,7 @@ do_create()
 	newfs_msdos "/dev/${DEVICE}p2"
 	mount -t msdosfs "/dev/${DEVICE}p2" "${MOUNTPOINT}" # TODO: use label (/dev/gpt/${LABEL_BOOT}) instead of /dev/da0p2?
 	mkdir -p "${MOUNTPOINT}/EFI/BOOT"
-	cp /boot/boot1.efi "${MOUNTPOINT}/EFI/BOOT/"
+	cp /boot/boot1.efi "${MOUNTPOINT}/EFI/BOOT/bootx64.efi"
 	umount "${MOUNTPOINT}"
 	gpart add -t freebsd-ufs -l "${LABEL_ROOT}" -b 1M "${DEVICE}"
 	newfs -U "/dev/${DEVICE}p3" # TODO: use label (/dev/gpt/${LABEL_ROOT}) instead of /dev/da0p3?

@@ -82,10 +82,10 @@ do_create()
 		ln -s /tmp /var/tmp
 		# use a small (2Mo) tmpfs for /var/run
 		rm -fr /var/run/*
-		echo 'tmpfs /var/run tmpfs rw,mode=01777,noexec,nosuid,size=2M 0 0' >> /etc/fstab
+		echo 'tmpfs /var/run tmpfs rw,mode=0755,noexec,nosuid,size=2M 0 0' >> /etc/fstab
 		# use tmpfs (32Mo) for /var/log
 		rm -fr /var/log/*
-		echo 'tmpfs /var/log tmpfs rw,mode=01777,nosuid,size=32M 0 0' >> /etc/fstab
+		echo 'tmpfs /var/log tmpfs rw,mode=0755,nosuid,size=32M 0 0' >> /etc/fstab
 
 		tzsetup -s Europe/Paris
 

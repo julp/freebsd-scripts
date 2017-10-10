@@ -7,7 +7,7 @@ readonly __DIR__=`cd $(dirname -- "${0}"); pwd -P`
 readonly MOUNT_RO="/bin /sbin /usr/bin /usr/libexec /usr/sbin"
 # NOTE: mmap'ing of libraries requires exec
 readonly MOUNT_RO_NOSUID="/lib /libexec /rescue /usr/lib /usr/lib32"
-readonly MOUNT_RO_NOSUID_NOEXEC="/boot /usr/include /usr/libdata /usr/share"
+readonly MOUNT_RO_NOSUID_NOEXEC="/boot /usr/include /usr/libdata /usr/share /usr/ports"
 
 : ${JAILS_ROOT:='/var/jails'}
 
@@ -48,11 +48,13 @@ do_install()
 		mkdir -p "${JAILS_ROOT}/${1}"
 	fi
 
-	# TODO: make -C /usr/src/release NOPORTS=YES NOSRC=YES NODOC=YES WITHOUT_DEBUG_FILES=YES base.txz
-	# then use base.txz or cp /usr/obj/usr/src/release/dist/base/{.*,etc,var,root,boot} "${JAILS_ROOT}/${1}/"
-	# NOTE: /usr/obj/usr/src/release/ takes 379Mo (tmpfs)
-	tar -xJf ${__DIR__}/base.txz --include=.cshrc --include=.profile --include='etc/*' --include='var/*' --include='root/*' --include='boot/*' -C "${JAILS_ROOT}/${1}"
-	rm -fr "${JAILS_ROOT}/${1}/boot" # TODO: better, mount it (before tar) as tmpfs (and umount it here)?
+	make -C /usr/src/release NOPORTS=YES NOSRC=YES NODOC=YES WITHOUT_DEBUG_FILES=YES base.txz
+#if 0
+	#cp -Rp /usr/src/release/dist/base/.* /usr/src/release/dist/base/etc /usr/src/release/dist/base/var /usr/src/release/dist/base/root "${JAILS_ROOT}/${1}/"
+#else
+	tar -xJf /usr/src/release/base.txz --include=.cshrc --include=.profile --include='etc/*' --include='var/*' --include='root/*' --include='boot/*' -C "${JAILS_ROOT}/${1}"
+	rm -fr "${JAILS_ROOT}/${1}/boot"
+#endif
 	for path in ${MOUNT_RO} ${MOUNT_RO_NOSUID} ${MOUNT_RO_NOSUID_NOEXEC} /var /dev /etc /tmp; do
 		mkdir -p "${JAILS_ROOT}/${1}${path}"
 	done
@@ -73,7 +75,6 @@ do_install()
 	chroot "${JAILS_ROOT}/${1}" /bin/sh << EOC
 		# put here any command you'd need, paths are relative to the jail's root
 		ln -sf dev/null kernel
-		mkdir -p usr/ports
 		chsh -s /bin/tcsh > /dev/null 2>&1
 		# TODO: inherit current timezone or make it configurable
 		tzsetup -s Europe/Paris

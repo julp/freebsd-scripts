@@ -36,7 +36,7 @@ exec.prestart =
     "/sbin/mount -t nullfs -o ro /usr/libexec ${path}/usr/libexec",
     "/sbin/mount -t nullfs -o ro /usr/sbin ${path}/usr/sbin",
     #"/sbin/mount -t nullfs -o ro,nosuid,noexec /usr/src ${path}/usr/src",
-    #"/sbin/mount -t nullfs -o ro,nosuid,noexec /usr/ports ${path}/usr/ports",
+    "/sbin/mount -t nullfs -o ro,nosuid,noexec /usr/ports ${path}/usr/ports",
     "/sbin/mount -t nullfs -o ro,nosuid,noexec /usr/share ${path}/usr/share"
 ;
 
@@ -55,7 +55,7 @@ exec.poststop =
     "/sbin/umount ${path}/usr/libexec",
     "/sbin/umount ${path}/usr/sbin",
     #"/sbin/umount ${path}/usr/src",
-    #"/sbin/umount ${path}/usr/ports",
+    "/sbin/umount ${path}/usr/ports",
     "/sbin/umount ${path}/usr/share"
 ;
 

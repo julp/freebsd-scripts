@@ -1,6 +1,6 @@
 Index: lib/libpam/modules/pam_unix/pam_unix.c
 ===================================================================
---- lib/libpam/modules/pam_unix/pam_unix.c	(revision 311944)
+--- lib/libpam/modules/pam_unix/pam_unix.c	(revision 324433)
 +++ lib/libpam/modules/pam_unix/pam_unix.c	(working copy)
 @@ -396,8 +396,12 @@
  		switch (old_pwd->pw_fields & _PWF_SOURCE) {
@@ -26,7 +26,7 @@ Index: lib/libpam/modules/pam_unix/pam_unix.c
  		case _PWF_NIS:
 Index: lib/libutil/_secure_path.c
 ===================================================================
---- lib/libutil/_secure_path.c	(revision 311944)
+--- lib/libutil/_secure_path.c	(revision 324433)
 +++ lib/libutil/_secure_path.c	(working copy)
 @@ -23,6 +23,7 @@
  __FBSDID("$FreeBSD$");
@@ -61,7 +61,7 @@ Index: lib/libutil/_secure_path.c
  	else
 Index: lib/libutil/gr_util.c
 ===================================================================
---- lib/libutil/gr_util.c	(revision 311944)
+--- lib/libutil/gr_util.c	(revision 324433)
 +++ lib/libutil/gr_util.c	(working copy)
 @@ -43,6 +43,8 @@
  #include <stdlib.h>
@@ -72,17 +72,18 @@ Index: lib/libutil/gr_util.c
  
  static int lockfd = -1;
  static char group_dir[PATH_MAX];
-@@ -60,7 +62,17 @@
+@@ -60,7 +62,18 @@
  {
  
  	if (dir == NULL) {
 -		strcpy(group_dir, _PATH_ETC);
 +		int jailed;
++		struct stat buf;
 +		size_t jailed_len;
 +
 +		jailed = 0;
 +		jailed_len = sizeof(jailed);
-+		if (0 == sysctlbyname("security.jail.jailed", &jailed, &jailed_len, NULL, 0) && jailed) {
++		if (0 == sysctlbyname("security.jail.jailed", &jailed, &jailed_len, NULL, 0) && jailed && 0 == lstat(_PATH_GROUP, &buf) && S_ISLNK(buf.st_mode)) {
 +			strcpy(group_dir, "/private/etc");
 +		} else {
 +			strcpy(group_dir, _PATH_ETC);
@@ -93,7 +94,7 @@ Index: lib/libutil/gr_util.c
  			errno = ENAMETOOLONG;
 Index: lib/libutil/pw_util.c
 ===================================================================
---- lib/libutil/pw_util.c	(revision 311944)
+--- lib/libutil/pw_util.c	(revision 324433)
 +++ lib/libutil/pw_util.c	(working copy)
 @@ -65,6 +65,8 @@
  #include <stdlib.h>
@@ -104,17 +105,18 @@ Index: lib/libutil/pw_util.c
  
  #include "libutil.h"
  
-@@ -97,7 +99,17 @@
+@@ -97,7 +99,18 @@
  #endif
  
  	if (dir == NULL) {
 -		strcpy(passwd_dir, _PATH_ETC);
 +		int jailed;
++		struct stat buf;
 +		size_t jailed_len;
 +
 +		jailed = 0;
 +		jailed_len = sizeof(jailed_len);
-+		if (0 == sysctlbyname("security.jail.jailed", &jailed, &jailed_len, NULL, 0) && jailed) {
++		if (0 == sysctlbyname("security.jail.jailed", &jailed, &jailed_len, NULL, 0) && jailed && 0 == lstat(_PATH_MASTERPASSWD, &buf) && S_ISLNK(buf.st_mode)) {
 +			strcpy(passwd_dir, "/private/etc");
 +		} else {
 +			strcpy(passwd_dir, _PATH_ETC);
@@ -125,7 +127,7 @@ Index: lib/libutil/pw_util.c
  			errno = ENAMETOOLONG;
 Index: usr.bin/chpass/chpass.1
 ===================================================================
---- usr.bin/chpass/chpass.1	(revision 311944)
+--- usr.bin/chpass/chpass.1	(revision 324433)
 +++ usr.bin/chpass/chpass.1	(working copy)
 @@ -45,6 +45,7 @@
  .Op Fl p Ar encpass
@@ -157,7 +159,7 @@ Index: usr.bin/chpass/chpass.1
  Possible display items are as follows:
 Index: usr.bin/chpass/chpass.c
 ===================================================================
---- usr.bin/chpass/chpass.c	(revision 311944)
+--- usr.bin/chpass/chpass.c	(revision 324433)
 +++ usr.bin/chpass/chpass.c	(working copy)
 @@ -82,6 +82,7 @@
  	struct passwd lpw, *old_pw, *pw;
@@ -209,7 +211,7 @@ Index: usr.bin/chpass/chpass.c
  			pw_fini();
 Index: usr.bin/passwd/passwd.1
 ===================================================================
---- usr.bin/passwd/passwd.1	(revision 311944)
+--- usr.bin/passwd/passwd.1	(revision 324433)
 +++ usr.bin/passwd/passwd.1	(working copy)
 @@ -37,6 +37,7 @@
  .Sh SYNOPSIS
@@ -233,7 +235,7 @@ Index: usr.bin/passwd/passwd.1
  When changing local or NIS password, the next password change date
 Index: usr.bin/passwd/passwd.c
 ===================================================================
---- usr.bin/passwd/passwd.c	(revision 311944)
+--- usr.bin/passwd/passwd.c	(revision 324433)
 +++ usr.bin/passwd/passwd.c	(working copy)
 @@ -55,11 +55,12 @@
  
@@ -283,7 +285,7 @@ Index: usr.bin/passwd/passwd.c
  	pam_check("pam_chauthtok");
 Index: usr.sbin/jail/config.c
 ===================================================================
---- usr.sbin/jail/config.c	(revision 311944)
+--- usr.sbin/jail/config.c	(revision 324433)
 +++ usr.sbin/jail/config.c	(working copy)
 @@ -371,8 +371,10 @@
  			free(dp->name);
@@ -299,7 +301,7 @@ Index: usr.sbin/jail/config.c
  	} else {
 Index: usr.sbin/jail/jaillex.l
 ===================================================================
---- usr.sbin/jail/jaillex.l	(revision 311944)
+--- usr.sbin/jail/jaillex.l	(revision 324433)
 +++ usr.sbin/jail/jaillex.l	(working copy)
 @@ -71,9 +71,14 @@
  			}
@@ -320,7 +322,7 @@ Index: usr.sbin/jail/jaillex.l
  				instr = 0;
 Index: usr.sbin/jail/jailp.h
 ===================================================================
---- usr.sbin/jail/jailp.h	(revision 311944)
+--- usr.sbin/jail/jailp.h	(revision 324433)
 +++ usr.sbin/jail/jailp.h	(working copy)
 @@ -52,6 +52,7 @@
  #define PF_CONV		0x40	/* Parameter duplicated in converted form */
@@ -332,7 +334,7 @@ Index: usr.sbin/jail/jailp.h
  #define JF_SET		0x0002	/* -m */
 Index: usr.sbin/jail/jailparse.y
 ===================================================================
---- usr.sbin/jail/jailparse.y	(revision 311944)
+--- usr.sbin/jail/jailparse.y	(revision 324433)
 +++ usr.sbin/jail/jailparse.y	(working copy)
 @@ -47,7 +47,8 @@
  	char			*cs;
@@ -371,9 +373,9 @@ Index: usr.sbin/jail/jailparse.y
  		TAILQ_CONCAT(&$$->val, $2, tq);
 Index: usr.sbin/pw/grupd.c
 ===================================================================
---- usr.sbin/pw/grupd.c	(revision 311944)
+--- usr.sbin/pw/grupd.c	(revision 324433)
 +++ usr.sbin/pw/grupd.c	(working copy)
-@@ -42,7 +42,7 @@
+@@ -43,7 +43,7 @@
  {
  	static char pathbuf[MAXPATHLEN];
  
@@ -384,7 +386,7 @@ Index: usr.sbin/pw/grupd.c
  }
 Index: usr.sbin/pw/pw.c
 ===================================================================
---- usr.sbin/pw/pw.c	(revision 311944)
+--- usr.sbin/pw/pw.c	(revision 324433)
 +++ usr.sbin/pw/pw.c	(working copy)
 @@ -118,8 +118,8 @@
  	arg1 = NULL;
@@ -407,7 +409,7 @@ Index: usr.sbin/pw/pw.c
  				break;
 Index: usr.sbin/pw/pw_utils.c
 ===================================================================
---- usr.sbin/pw/pw_utils.c	(revision 311944)
+--- usr.sbin/pw/pw_utils.c	(revision 324433)
 +++ usr.sbin/pw/pw_utils.c	(working copy)
 @@ -71,7 +71,7 @@
  
@@ -420,7 +422,7 @@ Index: usr.sbin/pw/pw_utils.c
  
 Index: usr.sbin/pw/pwupd.c
 ===================================================================
---- usr.sbin/pw/pwupd.c	(revision 311944)
+--- usr.sbin/pw/pwupd.c	(revision 324433)
 +++ usr.sbin/pw/pwupd.c	(working copy)
 @@ -47,7 +47,7 @@
  {
@@ -442,7 +444,7 @@ Index: usr.sbin/pw/pwupd.c
  	}
 Index: usr.sbin/pw/pwupd.h
 ===================================================================
---- usr.sbin/pw/pwupd.h	(revision 311944)
+--- usr.sbin/pw/pwupd.h	(revision 324433)
 +++ usr.sbin/pw/pwupd.h	(working copy)
 @@ -82,7 +82,8 @@
  

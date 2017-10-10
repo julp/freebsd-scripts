@@ -64,14 +64,14 @@ typedef struct node_t {
 
 static bool starts_with(const char *string, const char *prefix)
 {
-    size_t string_len, prefix_len;
+    size_t prefix_len;
 
-    string_len = strlen(string);
+    assert(NULL != string);
+    assert(NULL != prefix);
+
     prefix_len = strlen(prefix);
-    if (prefix_len > string_len) {
-        return false;
-    }
-    return 0 == strncmp(string, prefix, prefix_len);
+
+    return prefix_len <= strlen(string) && 0 == strncmp(string, prefix, prefix_len);
 }
 
 static void strip(char *path, size_t path_size, const char *fallback)

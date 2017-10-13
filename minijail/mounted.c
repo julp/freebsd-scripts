@@ -153,7 +153,7 @@ static node_t *init_and_add_node_to_ht(struct hsearch_data *ht, node_t *node, st
     return node;
 }
 
-size_t get_mountpoints_in(const char *path, struct statfs **sorted)
+size_t get_mountpoints_in(const char *path, bool include_root, struct statfs **sorted)
 {
     size_t node_len;
     int i, mntbufp_len;
@@ -212,7 +212,7 @@ size_t get_mountpoints_in(const char *path, struct statfs **sorted)
 #ifdef DEBUG
     print_nodes(root, 0);
 #endif /* DEBUG */
-    node_len -= (NULL == root->mntbufp);
+    node_len -= (NULL == root->mntbufp || !include_root);
     *sorted = sort_nodes(root, node_len);
     hdestroy_r(&ht);
     free(mntbufp);
@@ -223,14 +223,15 @@ size_t get_mountpoints_in(const char *path, struct statfs **sorted)
 
 extern char *__progname;
 
-static char optstr[] = "j:p:rv";
+static char optstr[] = "ij:p:rv";
 
 static struct option long_options[] = {
-    { "jail",    required_argument, NULL, 'j' },
-    { "path",    required_argument, NULL, 'p' },
-    { "reverse", no_argument,       NULL, 'r' },
-    { "verbose", no_argument,       NULL, 'v' },
-    { NULL,      no_argument,       NULL, 0   }
+    { "include-root", no_argument,       NULL, 'i' },
+    { "jail",         required_argument, NULL, 'j' },
+    { "path",         required_argument, NULL, 'p' },
+    { "reverse",      no_argument,       NULL, 'r' },
+    { "verbose",      no_argument,       NULL, 'v' },
+    { NULL,           no_argument,       NULL, 0   }
 };
 
 static void usage(void)
@@ -246,14 +247,14 @@ static void usage(void)
 
 int main(int argc, char **argv)
 {
-    int o;
+    int i, o;
     char *path;
     size_t mntbufp_len;
     struct statfs *mntbufp;
-    bool pFlag, jFlag, rFlag;
+    bool iFlag, jFlag, pFlag, rFlag;
 
     path = NULL;
-    jFlag = pFlag = rFlag = false;
+    iFlag = jFlag = pFlag = rFlag = false;
     while (-1 != (o = getopt_long(argc, argv, optstr, long_options, NULL))) {
         switch (o) {
             // -p flag is intended to unmount remaining file systems when jail stop process fails
@@ -292,6 +293,9 @@ int main(int argc, char **argv)
                 jailparam_free(params, ARRAY_SIZE(params));
                 break;
             }
+            case 'i':
+                iFlag = true;
+                break;
             case 'r':
                 rFlag = true;
                 break;
@@ -311,24 +315,19 @@ int main(int argc, char **argv)
     }
     argc -= optind;
     argv += optind;
+
     if (0 != argc) {
         usage();
     }
-    if (-1 == (mntbufp_len = get_mountpoints_in(path, &mntbufp))) {
-        error("get_mountpoints_in");
-    } else {
-        int i;
-
-        if (rFlag) {
-            for (i = mntbufp_len - 1; i >= 0; i--) {
-                printf("%s\n", mntbufp[i].f_mntonname);
-            }
-        } else {
-            for (i = 0; i < mntbufp_len; i++) {
-                printf("%s\n", mntbufp[i].f_mntonname);
-            }
+    mntbufp_len = get_mountpoints_in(path, iFlag, &mntbufp);
+    if (rFlag) {
+        for (i = mntbufp_len - 1; i >= 0; i--) {
+            printf("%s\n", mntbufp[i].f_mntonname);
         }
-        free(mntbufp);
+    } else {
+        for (i = 0; i < mntbufp_len; i++) {
+            printf("%s\n", mntbufp[i].f_mntonname);
+        }
     }
     free(path);
 

@@ -19,7 +19,7 @@ usage()
 	echo ''
 	echo "ACTION is one of:"
 	echo '--install			 : create a jail'
-#	 echo '--update or --upgrade : upgrade a jail'
+	echo '--update or --upgrade : upgrade a jail'
 	echo '--delete			  : drop a jail'
 	echo '--shell			   : acquire a root shell into the jail'
 	echo '--start			   : start a jail (if not yet active)'
@@ -52,9 +52,11 @@ do_install()
 #if 0
 	#cp -Rp /usr/src/release/dist/base/.* /usr/src/release/dist/base/etc /usr/src/release/dist/base/var /usr/src/release/dist/base/root "${JAILS_ROOT}/${1}/"
 #else
-	tar -xJf /usr/src/release/base.txz --include=.cshrc --include=.profile --include='etc/*' --include='var/*' --include='root/*' --include='boot/*' -C "${JAILS_ROOT}/${1}"
-	rm -fr "${JAILS_ROOT}/${1}/boot"
+	tar -xJf /usr/src/release/base.txz --include=.cshrc --include=.profile --include='etc/*' --include='var/*' --include='root/*' -C "${JAILS_ROOT}/${1}"
 #endif
+	#pushd "${JAILS_ROOT}/${1}"
+	#mtree -eu < /etc/mtree/BSD.root.dist
+	#popd
 	for path in ${MOUNT_RO} ${MOUNT_RO_NOSUID} ${MOUNT_RO_NOSUID_NOEXEC} /var /dev /etc /tmp; do
 		mkdir -p "${JAILS_ROOT}/${1}${path}"
 	done
@@ -99,15 +101,13 @@ do_install()
 		echo 'export MM_CHARSET=UTF-8' >> etc/profile
 		# disable periodic
 		sed -i '' '/^[^#].*periodic/s/^/#/' etc/crontab
-		(
-			cat <<- "EOS"
-				WRKDIRPREFIX=/var/ports
-				DISTDIR=${WRKDIRPREFIX}/distfiles
-				PACKAGES=${WRKDIRPREFIX}/packages
+		cat > etc/make.conf <<- "EOS"
+			WRKDIRPREFIX=/var/ports
+			DISTDIR=${WRKDIRPREFIX}/distfiles
+			PACKAGES=${WRKDIRPREFIX}/packages
 
-				OPTIONS_UNSET_FORCE=EXAMPLES MANPAGES MAN3 NLS DOCS DOC HELP
-			EOS
-		) > etc/make.conf
+			OPTIONS_UNSET_FORCE=EXAMPLES MANPAGES MAN3 NLS DOCS DOC HELP
+		EOS
 EOC
 
 	for path in ${MOUNT_RO} ${MOUNT_RO_NOSUID} ${MOUNT_RO_NOSUID_NOEXEC}; do
@@ -119,6 +119,13 @@ EOC
 # 		zfs umount "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
 # 		zfs set canmount=noauto "${ZPOOL_NAME}${JAILS_ROOT}/${1}"
 	fi
+}
+
+# do_update(name)
+do_update()
+{
+	mergemaster -p -D "${JAILS_ROOT}/${1}"
+	mergemaster -PUFi --run-updates=always -D "${JAILS_ROOT}/${1}"
 }
 
 # do_fix(name)
@@ -190,9 +197,9 @@ for var in "$@" ; do
 	--install)
 		ACTION='install'
 		;;
-#	 --update|--upgrade)
-#		 ACTION='update'
-#		 ;;
+	 --update|--upgrade)
+		 ACTION='update'
+		 ;;
 	--shell)
 		ACTION='shell'
 		;;

@@ -288,16 +288,14 @@ install_jail()
 # 	chroot "${JAILS_ROOT}/${1}" /bin/sh << EOC
 # 		newaliases
 # EOC
-	(
-		cat <<- "EOS"
-			WRKDIRPREFIX=/var/ports
-			DISTDIR=${WRKDIRPREFIX}/distfiles
-			PACKAGES=${WRKDIRPREFIX}/packages
+	cat > "${JAILS_ROOT}/${1}/etc/make.conf" <<- "EOS"
+		WRKDIRPREFIX=/var/ports
+		DISTDIR=${WRKDIRPREFIX}/distfiles
+		PACKAGES=${WRKDIRPREFIX}/packages
 
-			OPTIONS_UNSET_FORCE=EXAMPLES MANPAGES MAN3 NLS DOCS DOC HELP
-			security_ca_root_nss_UNSET_FORCE=ETCSYMLINK
-		EOS
-	) > "${JAILS_ROOT}/${1}/etc/make.conf"
+		OPTIONS_UNSET_FORCE=EXAMPLES MANPAGES MAN3 NLS DOCS DOC HELP
+		security_ca_root_nss_UNSET_FORCE=ETCSYMLINK
+	EOS
 # 	umount "${JAILS_ROOT}/${1}/dev" "${JAILS_ROOT}/${1}"
 	if is_on_zfs "${JAILS_ROOT}"; then
 		zfs umount "${ZPOOL_NAME}${JAILS_ROOT}/${1}"

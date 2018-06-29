@@ -94,18 +94,20 @@ do_create()
 		echo 'setenv MM_CHARSET UTF-8' >> etc/csh.login
 
 		# /boot/loader.conf
-		echo 'kern.vty=vt' >> /boot/loader.conf
+		cat >> /boot/loader.conf <<-"EOF"
+			kern.vty=vt
+			# uncomment to turn off Meltdown mitigation
+			#vm.pmap.pti=0
+		EOF
 
 		# /etc/rc.conf
-		(
-			cat <<-"EOF"
-				keymap="fr.acc"
-				sshd_enable="YES"
-				ntpdate_enable="YES"
-				ntpdate_hosts="fr.pool.ntp.org"
-				ifconfig_DEFAULT="SYNCDHCP" # TODO: ifconfig_DEFAULT is mentioned in rc.conf(5) but I didn't find it in /etc/{rc.d/*,defaults/rc.conf,*.rc}
-			EOF
-		) >> /etc/rc.conf
+		cat >> /etc/rc.conf <<-"EOF"
+			keymap="fr.acc"
+			sshd_enable="YES"
+			ntpdate_enable="YES"
+			ntpdate_hosts="fr.pool.ntp.org"
+			ifconfig_DEFAULT="SYNCDHCP" # TODO: ifconfig_DEFAULT is mentioned in rc.conf(5) but I didn't find it in /etc/{rc.d/*,defaults/rc.conf,*.rc}
+		EOF
 EOC
 	warn "Before unplugging your thumb drive, don't forget to umount it!"
 }

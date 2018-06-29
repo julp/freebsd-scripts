@@ -67,3 +67,10 @@ myjail {
 Use:
 
 Same as *minijail*, see its README without the options `--update` (`--upgrade`) and `--source` (`-s`)/`--binary` (`-b`)
+
+To apply the patch to prepend commands in jail.conf:
+```
+svnlite patch /.../freebsd-scripts/microjail/usr.sbin_jail_11.2RELEASE.diff
+make -C /usr/src/usr.sbin/jail
+make -C /usr/src/usr.sbin/jail install
+```

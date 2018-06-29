@@ -1,0 +1,87 @@
+Index: usr.sbin/jail/config.c
+===================================================================
+--- usr.sbin/jail/config.c	(revision 335796)
++++ usr.sbin/jail/config.c	(working copy)
+@@ -373,8 +373,10 @@
+ 			free(dp->name);
+ 			dp->name = estrdup(name);
+ 		}
+-		if (!(flags & PF_APPEND) || TAILQ_EMPTY(&nss))
++		if (!(flags & (PF_APPEND|PF_PREPEND)) || TAILQ_EMPTY(&nss))
+ 			free_param_strings(dp);
++		if (0 != (flags & PF_PREPEND))
++                       TAILQ_SWAP(&dp->val, &nss, cfstring, tq);
+ 		TAILQ_CONCAT(&dp->val, &nss, tq);
+ 		dp->flags |= flags;
+ 	} else {
+Index: usr.sbin/jail/jaillex.l
+===================================================================
+--- usr.sbin/jail/jaillex.l	(revision 335796)
++++ usr.sbin/jail/jaillex.l	(working copy)
+@@ -73,9 +73,14 @@
+ 			}
+ 
+ 			/* Reserved tokens */
+-<_>\+=			{
+-				instr = 0;
+-				return PLEQ;
++<_>\[=                 {
++                                instr = 0;
++                                return OP_PREPEND;
++}
++<_>\+= |
++<_>\]=                 {
++                                instr = 0;
++                                return OP_APPEND;
+ 			}
+ <_>[,;={}]		{
+ 				instr = 0;
+Index: usr.sbin/jail/jailp.h
+===================================================================
+--- usr.sbin/jail/jailp.h	(revision 335796)
++++ usr.sbin/jail/jailp.h	(working copy)
+@@ -54,6 +54,7 @@
+ #define PF_CONV		0x40	/* Parameter duplicated in converted form */
+ #define PF_REV		0x80	/* Run commands in reverse order on stopping */
+ #define	PF_IMMUTABLE	0x100	/* Immutable parameter */
++#define PF_PREPEND	0x200   /* Prepend to existing parameter list */
+ 
+ #define JF_START	0x0001	/* -c */
+ #define JF_SET		0x0002	/* -m */
+Index: usr.sbin/jail/jailparse.y
+===================================================================
+--- usr.sbin/jail/jailparse.y	(revision 335796)
++++ usr.sbin/jail/jailparse.y	(working copy)
+@@ -49,7 +49,8 @@
+ 	char			*cs;
+ }
+ 
+-%token      PLEQ
++%token      OP_APPEND
++%token      OP_PREPEND
+ %token <cs> STR STR1 VAR VAR1
+ 
+ %type <j>  jail
+@@ -117,7 +118,7 @@
+ 		TAILQ_CONCAT(&$$->val, $3, tq);
+ 		free($3);
+ 	}
+-	| name PLEQ value
++	| name OP_APPEND value
+ 	{
+ 		$$ = $1;
+ 		TAILQ_CONCAT(&$$->val, $3, tq);
+@@ -124,6 +125,13 @@
+ 		$$->flags |= PF_APPEND;
+ 		free($3);
+ 	}
++       | name OP_PREPEND value
++       {
++               $$ = $1;
++               TAILQ_CONCAT(&$$->val, $3, tq);
++               $$->flags |= PF_PREPEND;
++               free($3);
++       }
+ 	| name value
+ 	{
+ 		$$ = $1;

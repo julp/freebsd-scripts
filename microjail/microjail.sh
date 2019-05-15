@@ -52,7 +52,7 @@ do_install()
 #if 0
 	#cp -Rp /usr/src/release/dist/base/.* /usr/src/release/dist/base/etc /usr/src/release/dist/base/var /usr/src/release/dist/base/root "${JAILS_ROOT}/${1}/"
 #else
-	tar -xJf /usr/src/release/base.txz --include=.cshrc --include=.profile --include='etc/*' --include='var/*' --include='root/*' -C "${JAILS_ROOT}/${1}"
+	tar -xJf /usr/obj/usr/src/`uname -p`.`uname -p`/release/base.txz --include=.cshrc --include=.profile --include='etc/*' --include='var/*' --include='root/*' -C "${JAILS_ROOT}/${1}"
 #endif
 	#pushd "${JAILS_ROOT}/${1}"
 	#mtree -eu < /etc/mtree/BSD.root.dist

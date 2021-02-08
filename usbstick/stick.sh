@@ -75,8 +75,8 @@ do_create()
 		# /etc/fstab
 		# /
 		echo '/dev/gpt/${LABEL_ROOT} / ufs rw,noatime 1 1' >> /etc/fstab
-		# use tmpfs (24Mo) for /tmp
-		echo 'tmpfs /tmp tmpfs rw,mode=01777,noexec,nosuid,size=24M 0 0' >> /etc/fstab
+		# use tmpfs (128Mo) for /tmp
+		echo 'tmpfs /tmp tmpfs rw,mode=01777,noexec,nosuid,size=128M 0 0' >> /etc/fstab
 		# symlink /var/tmp to /tmp
 		rm -fr /var/tmp
 		ln -s /tmp /var/tmp
@@ -86,6 +86,7 @@ do_create()
 		# use tmpfs (32Mo) for /var/log
 		rm -fr /var/log/*
 		echo 'tmpfs /var/log tmpfs rw,mode=0755,nosuid,size=32M 0 0' >> /etc/fstab
+		echo 'tmpfs /var/cache/pkg tmpfs rw,mode=0755,noexec,nosuid 0 0' >> /etc/fstab
 
 		tzsetup -s Europe/Paris
 

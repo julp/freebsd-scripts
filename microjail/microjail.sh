@@ -15,7 +15,7 @@ VERBOSE='false'
 
 usage()
 {
-	echo "Usage: `basename $0` [ -v ] [ -s | -b ] ACTION name..."
+	echo "Usage: `basename $0` [ -v ]  ACTION name..."
 	echo ''
 	echo "ACTION is one of:"
 	echo '--install			 : create a jail'

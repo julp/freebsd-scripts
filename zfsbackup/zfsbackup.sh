@@ -40,7 +40,7 @@ fi
 if [ `${SEND_TO} zfs list -Hd 1 -t snapshot "${REMOTE_POOL_NAME}" | wc -l` -eq 0 ]; then
 	zfs send -R "${SNAPSHOT_NAME}" | ${SEND_TO} zfs receive -v -sduF "${REMOTE_POOL_NAME}"
 else
-	zfs send -Ri `( for snap in $(zfs list -Hrd 1 -t snapshot -o name ${LOCAL_POOL_NAME}); do zfs get -Hpo name,value creation "${snap}"; done ) | sort -rnk 2 | tail -n 1 | cut -f 1` "${SNAPSHOT_NAME}" | ${SEND_TO} zfs receive -v -sduF "${REMOTE_POOL_NAME}"
+	zfs send -RI `( for snap in $(zfs list -Hrd 1 -t snapshot -o name ${LOCAL_POOL_NAME}); do zfs get -Hpo name,value creation "${snap}"; done ) | sort -rnk 2 | tail -n 1 | cut -f 1` "${SNAPSHOT_NAME}" | ${SEND_TO} zfs receive -v -sduF "${REMOTE_POOL_NAME}"
 # 	zfs send -i "${BOOKMARK_NAME}" "${SNAPSHOT_NAME}" | ${SEND_TO} zfs receive -v -sduF "${REMOTE_POOL_NAME}"
 # 	zfs destroy "${BOOKMARK_NAME}"
 fi

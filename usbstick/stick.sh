@@ -28,7 +28,7 @@ _mount()
 # 		err "${MOUNTPOINT} is not a directory"
 # 		exit 1
 # 	fi
-	mount -t ufs "/dev/${DEVICE}p3" "${MOUNTPOINT}" # TODO: use label (/dev/gpt/${LABEL_ROOT}) instead of /dev/da0p3?
+	mount -t ufs "/dev/${DEVICE}p3" "${MOUNTPOINT}" # TODO: use label (/dev/gpt/${LABEL_ROOT}) instead of /dev/${DEVICE}p3?
 	#mount -t ufs "/dev/gpt/${LABEL_ROOT}" "${MOUNTPOINT}"
 }
 
@@ -59,12 +59,12 @@ do_create()
 	gpart bootcode -b /boot/pmbr -p /boot/gptboot -i 1 "${DEVICE}"
 	gpart add -t efi -l "${LABEL_BOOT}" -a4k -s492k "${DEVICE}"
 	newfs_msdos "/dev/${DEVICE}p2"
-	mount -t msdosfs "/dev/${DEVICE}p2" "${MOUNTPOINT}" # TODO: use label (/dev/gpt/${LABEL_BOOT}) instead of /dev/da0p2?
+	mount -t msdosfs "/dev/${DEVICE}p2" "${MOUNTPOINT}" # TODO: use label (/dev/gpt/${LABEL_BOOT}) instead of /dev/${DEVICE}p2?
 	mkdir -p "${MOUNTPOINT}/EFI/BOOT"
 	cp /boot/boot1.efi "${MOUNTPOINT}/EFI/BOOT/bootx64.efi"
 	umount "${MOUNTPOINT}"
 	gpart add -t freebsd-ufs -l "${LABEL_ROOT}" -b 1M "${DEVICE}"
-	newfs -U "/dev/${DEVICE}p3" # TODO: use label (/dev/gpt/${LABEL_ROOT}) instead of /dev/da0p3?
+	newfs -U "/dev/${DEVICE}p3" # TODO: use label (/dev/gpt/${LABEL_ROOT}) instead of /dev/${DEVICE}p3?
 
 	_rebuild_sources_if_needed
 	_mount

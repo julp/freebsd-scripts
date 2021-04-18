@@ -1,13 +1,6 @@
-*microjail* is an alternative approach to *minijail*. Its advantage on *minijail* is that it don't rely on a base jail but directly on the host system/world. This to avoid:
+*microjail* is a script to setup minimalist jails by mounting read-only most of their base system from the host with nullfs
 
-* symlinks overhead
-* to maintain one more world (this base jail)
-
-Before use:
-
-1. create a symlink to ../minijail/mounted.c (`cd path/to/microjail` then `ln -s ../minijail/mounted.c .`)
-2. download base.txz (the FreeBSD base set) to this directory
-3. configure /etc/jail.conf as follows:
+Configure /etc/jail.conf as follows:
 
 ```
 mount.devfs;
@@ -64,13 +57,22 @@ myjail {
 }
 ```
 
-Use:
+Usage:
 
-Same as *minijail*, see its README without the options `--update` (`--upgrade`) and `--source` (`-s`)/`--binary` (`-b`)
+* Create a jail: `microjail.sh --install foo`
+* Drop a jail: `microjail.sh --delete foo`
+* Start the *foo* jail: `microjail.sh --start foo`
+* Stop the *foo* jail: `microjail.sh --stop foo`
+* Get a root shell to *foo* jail: `microjail.sh --shell foo`
 
-To apply the patch to prepend commands in jail.conf:
+To apply the patch to prepend commands (operator `[=`) in jail.conf:
 ```
+# svn
 svnlite patch /.../freebsd-scripts/microjail/usr.sbin_jail_11.2RELEASE.diff
+# git
+git apply /.../freebsd-scripts/microjail/usr.sbin_jail_13.0RELEASE.diff
+
+# then
 make -C /usr/src/usr.sbin/jail
 make -C /usr/src/usr.sbin/jail install
 ```

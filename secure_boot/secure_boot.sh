@@ -108,6 +108,37 @@ else
     # TODO: check that type of "${ESP_PARTITION}" is EFI
 fi
 
+mkdir -p "${BUILD_DIR}/boot"
+cp -r /boot/kernel "${BUILD_DIR}/boot"
+# TODO: we don't need both, the old Forth loader (likely retired soon) and the new written in Lua
+cp /boot/*.4th "${BUILD_DIR}/boot"
+cp -r /boot/lua "${BUILD_DIR}/boot"
+cp -r /boot/defaults "${BUILD_DIR}/boot"
+cp /boot/loader.conf "${BUILD_DIR}/boot"
+cp /boot/*.rc "${BUILD_DIR}/boot"
+cp /boot/device.hints "${BUILD_DIR}/boot"
+#cp /boot/loader.help "${BUILD_DIR}/boot" # this file doesn't exist anymore?
+echo "vfs.root.mountfrom=\"`df -T / | tail -n +2 | cut -wf 2`:`df / | tail -n +2 | cut -wf 1`\"" >> "${BUILD_DIR}/boot/loader.conf"
+
+mkdir -p "${BUILD_DIR}/etc"
+cp /etc/fstab "${BUILD_DIR}/etc/fstab"
+
+makefs "${BOOTFS_OUTPUT}" "${BUILD_DIR}"
+BOOTFS_SIZE=`stat -f "%z" "${BOOTFS_OUTPUT}"`
+BOOTFS_SIZE_PLUS_SAFETY=$((BOOTFS_EXTRA_SIZE + BOOTFS_SIZE))
+make -C /usr/src/stand MD_IMAGE_SIZE=${BOOTFS_SIZE_PLUS_SAFETY}
+# NOTE: it seems, to me, that's not /usr/src/stand/Makefile who build/creates loader.efi but /usr/src/release/Makefile
+make -C /usr/src/release NOPORTS=YES NOSRC=YES NODOC=YES WITHOUT_DEBUG_FILES=YES MD_IMAGE_SIZE=${BOOTFS_SIZE_PLUS_SAFETY} base.txz
+
+# find /usr/obj/ -name "*.efi" -delete
+cp /usr/obj/usr/src/amd64.amd64/release/dist/base/boot/loader.efi "${UNSIGNED_LOADER_OUTPUT}"
+# cp "${UNSIGNED_LOADER_OUTPUT}" "${UNSIGNED_LOADER_OUTPUT}.before.embed_mfs"
+# cp "${BOOTFS_OUTPUT}" "${BOOTFS_OUTPUT}.before.embed_mfs"
+/bin/sh /usr/src/sys/tools/embed_mfs.sh "${UNSIGNED_LOADER_OUTPUT}" "${BOOTFS_OUTPUT}"
+
+uefisign -c "${CERTIFICATE}" -k "${PRIVATE_KEY}" -o "${SIGNED_LOADER_OUTPUT}" "${UNSIGNED_LOADER_OUTPUT}"
+
+mount -t msdosfs "/dev/${ESP_PARTITION}" "${TEMPORARY_MOUNT_POINT}"
 if [ -n "${REFIND_DIRECTORY}" ]; then
     ARCHITECTURE=`uname -m`
     case "${ARCHITECTURE}" in
@@ -144,38 +175,6 @@ menuentry "FreeBSD" {
 EOF
     efibootmgr -a -c -l "${TEMPORARY_MOUNT_POINT}/EFI/refind/refind_${REFIND_ARCHITECTURE_SUFFIX}.efi" -L "rEFInd"
 fi
-
-mkdir -p "${BUILD_DIR}/boot"
-cp -r /boot/kernel "${BUILD_DIR}/boot"
-# TODO: we don't need both, the old Forth loader (likely retired soon) and the new written in Lua
-cp /boot/*.4th "${BUILD_DIR}/boot"
-cp -r /boot/lua "${BUILD_DIR}/boot"
-cp -r /boot/defaults "${BUILD_DIR}/boot"
-cp /boot/loader.conf "${BUILD_DIR}/boot"
-cp /boot/*.rc "${BUILD_DIR}/boot"
-cp /boot/device.hints "${BUILD_DIR}/boot"
-#cp /boot/loader.help "${BUILD_DIR}/boot" # this file doesn't exist anymore?
-echo "vfs.root.mountfrom=\"`df -T / | tail -n +2 | cut -wf 2`:`df / | tail -n +2 | cut -wf 1`\"" >> "${BUILD_DIR}/boot/loader.conf"
-
-mkdir -p "${BUILD_DIR}/etc"
-cp /etc/fstab "${BUILD_DIR}/etc/fstab"
-
-makefs "${BOOTFS_OUTPUT}" "${BUILD_DIR}"
-BOOTFS_SIZE=`stat -f "%z" "${BOOTFS_OUTPUT}"`
-BOOTFS_SIZE_PLUS_SAFETY=$((BOOTFS_EXTRA_SIZE + BOOTFS_SIZE))
-make -C /usr/src/stand MD_IMAGE_SIZE=${BOOTFS_SIZE_PLUS_SAFETY}
-# NOTE: it seems, to me, that's not /usr/src/stand/Makefile who build/creates loader.efi but /usr/src/release/Makefile
-make -C /usr/src/release NOPORTS=YES NOSRC=YES NODOC=YES WITHOUT_DEBUG_FILES=YES MD_IMAGE_SIZE=${BOOTFS_SIZE_PLUS_SAFETY} base.txz
-
-# find /usr/obj/ -name "*.efi" -delete
-cp /usr/obj/usr/src/amd64.amd64/release/dist/base/boot/loader.efi "${UNSIGNED_LOADER_OUTPUT}"
-# cp "${UNSIGNED_LOADER_OUTPUT}" "${UNSIGNED_LOADER_OUTPUT}.before.embed_mfs"
-# cp "${BOOTFS_OUTPUT}" "${BOOTFS_OUTPUT}.before.embed_mfs"
-/bin/sh /usr/src/sys/tools/embed_mfs.sh "${UNSIGNED_LOADER_OUTPUT}" "${BOOTFS_OUTPUT}"
-
-uefisign -c "${CERTIFICATE}" -k "${PRIVATE_KEY}" -o "${SIGNED_LOADER_OUTPUT}" "${UNSIGNED_LOADER_OUTPUT}"
-
-mount -t msdosfs "/dev/${ESP_PARTITION}" "${TEMPORARY_MOUNT_POINT}"
 cp "${SIGNED_LOADER_OUTPUT}" "${TEMPORARY_MOUNT_POINT}/EFI/Boot/signed-bootx64-freebsd-13.efi"
 efibootmgr -a -c -l "${TEMPORARY_MOUNT_POINT}/EFI/Boot/signed-bootx64-freebsd-13.efi" -L "FreeBSD 13 (signed)"
 sync

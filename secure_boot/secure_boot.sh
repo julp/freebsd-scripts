@@ -18,14 +18,18 @@ readonly BOOTFS_EXTRA_SIZE=512
 
 . ${__DIR__}/../_routines.inc.sh
 
+# default values
+BASE_DIRECTORY=""
+
 usage()
 {
-    echo "Usage: `basename $0` -c CERTIFICATE -k PRIVATE_KEY -e ESP_PARTITION"
+    echo "Usage: `basename $0` -c CERTIFICATE -k PRIVATE_KEY -e ESP_PARTITION -b BASE_DIRECTORY"
     echo ''
     echo '-c CERTIFICATE, --cert=CERTIFICATE    : path to the certificate'
     echo '-k PRIVATE_KEY, --key=PRIVATE_KEY     : path to the private key'
     echo '-e ESP_PARTITION, --esp=ESP_PARTITION : the name (or label) of the EFI partition (default is to try to guess it)'
     echo ''
+    echo '-b BASE_DIRECTORY, --base=BASE_DIRECTORY       : the base system directory (default: /, useful to point to a BE or jail)'
     echo '-r REFIND_DIRECTORY, --refind=REFIND_DIRECTORY : the directory where you unzipped the rEFInd "binary zip file"'
     echo ''
     exit 2
@@ -34,11 +38,14 @@ usage()
 newopts=""
 for var in "$@" ; do
     case "$var" in
-    --esp=*)
-        ESP_PARTITION="${var#--esp=}"
+    --base=*)
+        BASE_DIRECTORY="${var#--base=}"
         ;;
     --cert=*)
         CERTIFICATE="${var#--cert=}"
+        ;;
+    --esp=*)
+        ESP_PARTITION="${var#--esp=}"
         ;;
     --key=*)
         PRIVATE_KEY="${var#--key=}"
@@ -59,8 +66,11 @@ done
 set -- $newopts
 unset var newopts
 
-while getopts 'c:k:e:' COMMAND_LINE_ARGUMENT; do
+while getopts 'b:c:k:e:' COMMAND_LINE_ARGUMENT; do
     case "${COMMAND_LINE_ARGUMENT}" in
+    b)
+        BASE_DIRECTORY="${OPTARG}"
+        ;;
     c)
         CERTIFICATE="${OPTARG}"
         ;;
@@ -109,19 +119,19 @@ else
 fi
 
 mkdir -p "${BUILD_DIR}/boot"
-cp -r /boot/kernel "${BUILD_DIR}/boot"
+cp -r "${BASE_DIRECTORY}/boot/kernel" "${BUILD_DIR}/boot"
 # TODO: we don't need both, the old Forth loader (likely retired soon) and the new written in Lua
-cp /boot/*.4th "${BUILD_DIR}/boot"
-cp -r /boot/lua "${BUILD_DIR}/boot"
-cp -r /boot/defaults "${BUILD_DIR}/boot"
-cp /boot/loader.conf "${BUILD_DIR}/boot"
-cp /boot/*.rc "${BUILD_DIR}/boot"
-cp /boot/device.hints "${BUILD_DIR}/boot"
-#cp /boot/loader.help "${BUILD_DIR}/boot" # this file doesn't exist anymore?
+cp "${BASE_DIRECTORY}/boot"/*.4th "${BUILD_DIR}/boot"
+cp -r "${BASE_DIRECTORY}/boot/lua" "${BUILD_DIR}/boot"
+cp -r "${BASE_DIRECTORY}/boot/defaults" "${BUILD_DIR}/boot"
+cp "${BASE_DIRECTORY}/boot/loader.conf" "${BUILD_DIR}/boot"
+cp "${BASE_DIRECTORY}/boot"/*.rc "${BUILD_DIR}/boot"
+cp "${BASE_DIRECTORY}/boot/device.hints" "${BUILD_DIR}/boot"
+#cp "${BASE_DIRECTORY}/boot/loader.help" "${BUILD_DIR}/boot" # this file doesn't exist anymore?
 echo "vfs.root.mountfrom=\"`df -T / | tail -n +2 | cut -wf 2`:`df / | tail -n +2 | cut -wf 1`\"" >> "${BUILD_DIR}/boot/loader.conf"
 
 mkdir -p "${BUILD_DIR}/etc"
-cp /etc/fstab "${BUILD_DIR}/etc/fstab"
+cp "${BASE_DIRECTORY}/etc/fstab" "${BUILD_DIR}/etc/fstab"
 
 makefs "${BOOTFS_OUTPUT}" "${BUILD_DIR}"
 BOOTFS_SIZE=`stat -f "%z" "${BOOTFS_OUTPUT}"`
@@ -147,7 +157,7 @@ if [ -n "${REFIND_DIRECTORY}" ]; then
         ;;
     # TODO: handle other architectures
     *)
-        err "unknow/unhandled architecture ${ARCHITECTURE}"
+        err "unknown/unhandled architecture ${ARCHITECTURE}"
         ;;
     esac
 

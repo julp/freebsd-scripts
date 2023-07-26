@@ -1,11 +1,11 @@
 # Create a dual "secure" boot Windows/FreeBSD
 
-## Requisites
+## Requirements
 
 * an EFI partition of at least 300 Mio
 * FreeBSD sources installed on /usr/src
 
-## 
+## Before usage
 
 Download sources, one way:
 
@@ -27,7 +27,7 @@ Before the first run, generate your certificates + private key by executing:
 
 ```
 # as root
-freebsd-scripts/secure_boot/secure_boot.sh --cert=MOK.pem --key=MOK.key --refind=path/to/refind/sources
+freebsd-scripts/secure_boot/secure_boot.sh --cert=MOK.pem --key=MOK.key --refind=path/to/the/unzipped/rEFInd/binary/zip/file
 ```
 
 Then, in your BIOS, register both MOK.cer and keys/refind.cer from previously unziped rEFInd directory

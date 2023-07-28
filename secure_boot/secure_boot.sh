@@ -128,7 +128,7 @@ cp "${BASE_DIRECTORY}/boot/loader.conf" "${BUILD_DIR}/boot"
 cp "${BASE_DIRECTORY}/boot"/*.rc "${BUILD_DIR}/boot"
 cp "${BASE_DIRECTORY}/boot/device.hints" "${BUILD_DIR}/boot"
 #cp "${BASE_DIRECTORY}/boot/loader.help" "${BUILD_DIR}/boot" # this file doesn't exist anymore?
-echo "vfs.root.mountfrom=\"`df -T / | tail -n +2 | cut -wf 2`:`df / | tail -n +2 | cut -wf 1`\"" >> "${BUILD_DIR}/boot/loader.conf"
+echo "vfs.root.mountfrom=\"`df -T \"${BASE_DIRECTORY}\" | tail -n +2 | cut -wf 2`:`df \"${BASE_DIRECTORY}\" | tail -n +2 | cut -wf 1`\"" >> "${BUILD_DIR}/boot/loader.conf"
 
 mkdir -p "${BUILD_DIR}/etc"
 cp "${BASE_DIRECTORY}/etc/fstab" "${BUILD_DIR}/etc/fstab"

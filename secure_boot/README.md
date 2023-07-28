@@ -1,8 +1,10 @@
 # Create a dual "secure" boot Windows/FreeBSD
 
+This is not about security but how to create a dual boot and make Windows >= 11 happy.
+
 ## Requirements
 
-* an EFI partition of at least 300 Mio
+* an EFI partition of at least 300 Mio (per FreeBSD loader)
 * FreeBSD sources installed on /usr/src
 
 ## Before usage
@@ -43,7 +45,7 @@ Then, in your BIOS, register MOK.cer
 
 ## Tested configurations
 
-* EVGA Z370 FTW: Windows 10/FreeBSD 13.1
+* EVGA Z370 FTW: Windows 10/FreeBSD 13.[12] (without rEFInd - it was already setup)
 
 ## Credits
 

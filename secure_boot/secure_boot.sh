@@ -19,7 +19,7 @@ readonly BOOTFS_EXTRA_SIZE=512
 . ${__DIR__}/../_routines.inc.sh
 
 # default values
-BASE_DIRECTORY=""
+BASE_DIRECTORY="/"
 
 usage()
 {
@@ -36,10 +36,10 @@ usage()
 }
 
 newopts=""
-for var in "$@" ; do
-    case "$var" in
+for var in "${@}" ; do
+    case "${var}" in
     --base=*)
-        BASE_DIRECTORY="${var#--base=}"
+        BASE_DIRECTORY=`realpath "${var#--base=}"`
         ;;
     --cert=*)
         CERTIFICATE="${var#--cert=}"
@@ -57,19 +57,20 @@ for var in "$@" ; do
         usage
         ;;
     *)
-        newopts="${newopts} ${var}"
+        newopts="${newopts} \"${var}\""
         ;;
     esac
 done
 
 # getopt stuffs and arguments checking
-set -- $newopts
+eval set -- "${newopts}"
+echo "$newopts"
 unset var newopts
 
 while getopts 'b:c:k:e:' COMMAND_LINE_ARGUMENT; do
     case "${COMMAND_LINE_ARGUMENT}" in
     b)
-        BASE_DIRECTORY="${OPTARG}"
+        BASE_DIRECTORY=`realpath "${OPTARG}"`
         ;;
     c)
         CERTIFICATE="${OPTARG}"

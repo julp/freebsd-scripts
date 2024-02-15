@@ -124,8 +124,8 @@ EOC
 # do_update(name)
 do_update()
 {
-	mergemaster -p -D "${JAILS_ROOT}/${1}"
-	mergemaster -PUFi --run-updates=always -D "${JAILS_ROOT}/${1}"
+	etcupdate -p -D "${JAILS_ROOT}/${1}"
+	etcupdate -B -D "${JAILS_ROOT}/${1}"
 }
 
 # do_fix(name)

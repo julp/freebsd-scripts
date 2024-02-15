@@ -1,0 +1,85 @@
+diff --git a/usr.sbin/jail/config.c b/usr.sbin/jail/config.c
+index 8c9ff0a7b..06ae7899d 100644
+--- a/usr.sbin/jail/config.c
++++ b/usr.sbin/jail/config.c
+@@ -435,8 +435,10 @@ add_param(struct cfjail *j, const struct cfparam *p, enum intparam ipnum,
+ 			free(dp->name);
+ 			dp->name = estrdup(name);
+ 		}
+-		if (!(flags & PF_APPEND) || TAILQ_EMPTY(&nss))
++		if (!(flags & (PF_APPEND|PF_PREPEND)) || TAILQ_EMPTY(&nss))
+ 			free_param_strings(dp);
++		if (0 != (flags & PF_PREPEND))
++			TAILQ_SWAP(&dp->val, &nss, cfstring, tq);
+ 		TAILQ_CONCAT(&dp->val, &nss, tq);
+ 		dp->flags |= flags;
+ 	} else {
+diff --git a/usr.sbin/jail/jaillex.l b/usr.sbin/jail/jaillex.l
+index 1dc61c1e9..96b8600d8 100644
+--- a/usr.sbin/jail/jaillex.l
++++ b/usr.sbin/jail/jaillex.l
+@@ -64,9 +64,14 @@ static int instr;
+ <_>\/\*([^*]|(\*+([^*\/])))*\*+\/ instr = 0;
+ 
+ 			/* Reserved tokens */
+-<_>\+=			{
++<_>\[=			{
+ 				instr = 0;
+-				return PLEQ;
++				return OP_PREPEND;
++			}
++<_>\+= |
++<_>\]=			{
++				instr = 0;
++				return OP_APPEND;
+ 			}
+ <_>[,;={}]		{
+ 				instr = 0;
+diff --git a/usr.sbin/jail/jailp.h b/usr.sbin/jail/jailp.h
+index f371a92b8..290682f61 100644
+--- a/usr.sbin/jail/jailp.h
++++ b/usr.sbin/jail/jailp.h
+@@ -54,6 +54,7 @@
+ #define PF_REV		0x0080	/* Run commands in reverse order on stopping */
+ #define	PF_IMMUTABLE	0x0100	/* Immutable parameter */
+ #define	PF_NAMEVAL	0x0200	/* Parameter is in "name value" form */
++#define PF_PREPEND	0x0400   /* Prepend to existing parameter list */
+ 
+ #define JF_START	0x0001	/* -c */
+ #define JF_SET		0x0002	/* -m */
+diff --git a/usr.sbin/jail/jailparse.y b/usr.sbin/jail/jailparse.y
+index 047ca882e..309851c76 100644
+--- a/usr.sbin/jail/jailparse.y
++++ b/usr.sbin/jail/jailparse.y
+@@ -49,7 +49,8 @@ static struct cfjail *global_jail;
+ 	char			*cs;
+ }
+ 
+-%token      PLEQ
++%token      OP_APPEND
++%token      OP_PREPEND
+ %token <cs> STR STR1 VAR VAR1
+ 
+ %type <p>  param name
+@@ -130,13 +131,20 @@ param	: name
+ 		TAILQ_CONCAT(&$$->val, $3, tq);
+ 		free($3);
+ 	}
+-	| name PLEQ value
++	| name OP_APPEND value
+ 	{
+ 		$$ = $1;
+ 		TAILQ_CONCAT(&$$->val, $3, tq);
+ 		$$->flags |= PF_APPEND;
+ 		free($3);
+ 	}
++	| name OP_PREPEND value
++	{
++		$$ = $1;
++		TAILQ_CONCAT(&$$->val, $3, tq);
++		$$->flags |= PF_PREPEND;
++		free($3);
++	}
+ 	| name value
+ 	{
+ 		$$ = $1;

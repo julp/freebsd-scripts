@@ -46,6 +46,17 @@ Then, in your BIOS, register MOK.cer
 ## Tested configurations
 
 * EVGA Z370 FTW: Windows 10/FreeBSD 13.[12] (without rEFInd - it was already setup)
+* MSI Z690 Unify-X: Windows 11/FreeBSD 13.2/14.0 (without rEFInd - it was already setup)
+
+## Importants notes
+
+* I highly suggest to run this script before `make installkernel` when performing a system upgrade else /usr/obj might be recompiled from the upgraded world and you won't be able to reuse /usr/obj to upgrade an other system
+* prefer loading modules from /etc/rc.conf (`kld_list="space-separated list of module names to be loaded"`) instead of /boot/loader.conf (when possible)
+
+## TODO
+
+* remove unused modules
+* preserve the BE menu at FreeBSD boot menu (`currdev` ? `rootdev` ?)
 
 ## Credits
 

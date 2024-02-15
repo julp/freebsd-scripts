@@ -74,6 +74,12 @@ do_install()
 		mount -t nullfs -o ro,nosuid,noexec "${path}" "${JAILS_ROOT}/${1}${path}"
 	done
 
+	# files to reproduce from host to jail (if they exist)
+	for file in /etc/src-env.conf; do
+		[ -f "${file}" ] && cp "${file}" "${JAILS_ROOT}/${1}/${file}"
+	end
+	# if /etc/src.conf exists on host copy it but strip CCACHE variables
+	[ -f "/etc/src.conf" ] && grep -Fvi CCACHE /etc/src.conf > "${JAILS_ROOT}/${1}/etc/src-env.conf"
 	chroot "${JAILS_ROOT}/${1}" /bin/sh << EOC
 		# put here any command you'd need, paths are relative to the jail's root
 		ln -sf dev/null kernel

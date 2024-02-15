@@ -88,9 +88,11 @@ do_install()
 		tzsetup -s Europe/Paris
 		touch etc/fstab
 		(echo -n 'nameserver ' ; route get default | grep interface | cut -wf 3 | xargs ifconfig | grep inet | grep -v inet6 | cut -wf 3) > /etc/resolv.conf
+
 		# /etc/host.conf
 		echo 'hosts' >> etc/host.conf
 		echo 'dns' >> etc/host.conf
+
 		# /etc/rc.conf
 		echo 'hostname="\$(/bin/hostname)"' >> etc/rc.conf
 		#echo 'sendmail_enable="NO"' >> etc/rc.conf
@@ -98,13 +100,19 @@ do_install()
 		echo 'syslogd_flags="-ss"' >> etc/rc.conf
 		echo 'sshd_flags="-o ListenAddress=\$(route get default | grep interface | cut -wf 3 | xargs ifconfig | grep inet | grep -v inet6 | cut -wf 3)"' >> etc/rc.conf
 		echo 'clear_tmp_enable="YES"' >> etc/rc.conf
+
 		# TODO: inherit current locale or make it configurable
 		# /etc/csh.login - (t)csh
 		echo 'setenv LANG fr_FR.UTF-8' >> etc/csh.login
 		echo 'setenv MM_CHARSET UTF-8' >> etc/csh.login
+
 		# /etc/profile - (ba|k|z)sh
 		echo 'export LANG=fr_FR.UTF-8' >> etc/profile
 		echo 'export MM_CHARSET=UTF-8' >> etc/profile
+
+		# etc/etcupdate.conf
+		echo "IGNORE_FILES='/etc/group /etc/master.passwd /etc/csh.login /etc/profile /etc/sysctl.conf /etc/crontab /etc/motd /etc/shells /etc/hosts /etc/mail/mailer.conf'" >> etc/etcupdate.conf
+
 		# disable periodic
 		sed -i '' '/^[^#].*periodic/s/^/#/' etc/crontab
 		cat > etc/make.conf <<- "EOS"

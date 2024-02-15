@@ -164,9 +164,11 @@ do_start()
 do_stop()
 {
 	if _is_jail_running "${1}"; then
-		if jail -r`${VERBOSE} && echo 'v'` "${1}"; then
-			if [ `${__DIR__}/mounted -p "${JAILS_ROOT}/${1}" | wc -l` -ne 0 ]; then
-				do_fix "${1}"
+		if ask "Stop jail ${1}?"; then
+			if jail -r`${VERBOSE} && echo 'v'` "${1}"; then
+				if [ `${__DIR__}/mounted -p "${JAILS_ROOT}/${1}" | wc -l` -ne 0 ]; then
+					do_fix "${1}"
+				fi
 			fi
 		fi
 	else

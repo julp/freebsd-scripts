@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/sh -ex
 
 # mountpoint used to mount the ESP partition
 readonly TEMPORARY_MOUNT_POINT="/mnt"
@@ -22,6 +22,7 @@ readonly BOOTFS_EXTRA_SIZE=512
 BASE_DIRECTORY="/"
 KERNCONF="GENERIC"
 SOURCE_DIRECTORY="/usr/src"
+OBJECT_DIRECTORY="/usr/obj"
 
 usage()
 {
@@ -136,18 +137,31 @@ else
     # TODO: check that type of "${ESP_PARTITION}" is EFI
 fi
 
-# mkdir -p "${BUILD_DIRECTORY}/boot"
-# cp -r "${BASE_DIRECTORY}/boot/kernel" "${BUILD_DIRECTORY}/boot"
+# create_entry_if_not_exists(path, label)
+create_entry_if_not_exists()
+{
+    local EFI_PATH=`efibootmgr -u "${1}" | cut -wf 3`
+
+    if [ -n "${EFI_PATH}" ]; then
+        efibootmgr -v | grep -qF "${EFI_PATH}" || efibootmgr -a -c -l "${1}" -L "${2}"
+    fi
+
+    return 0
+}
+
+#SOURCE_DIRECTORY=$(realpath `make -C "${SOURCE_DIRECTORY}" -V .OBJDIR`)
+
 kldload -n filemon
-make -C "${SOURCE_DIRECTORY}/stand"
-make installkernel KERNCONF="${KERNCONF}" DESTDIR="${BUILD_DIRECTORY}" -C "${SOURCE_DIRECTORY}"
-# TODO: we don't need both, the old Forth loader (likely retired soon) and the new written in Lua
-cp "/usr/obj/usr/src/amd64.amd64/release/dist/base/boot"/*.4th "${BUILD_DIRECTORY}/boot"
-cp -r "/usr/obj/usr/src/amd64.amd64/release/dist/base/boot/lua" "${BUILD_DIRECTORY}/boot"
-cp -r "/usr/obj/usr/src/amd64.amd64/release/dist/base/boot/defaults" "${BUILD_DIRECTORY}/boot"
+mkdir -p "${BUILD_DIRECTORY}/boot"
+# cp -r "${BASE_DIRECTORY}/boot/kernel" "${BUILD_DIRECTORY}/boot"
+mtree -deUW -f "${SOURCE_DIRECTORY}/etc/mtree/BSD.root.dist" -p "${BUILD_DIRECTORY}"
+mtree -deUW -f "${SOURCE_DIRECTORY}/etc/mtree/BSD.usr.dist" -p "${BUILD_DIRECTORY}/usr"
+make -C "${SOURCE_DIRECTORY}/stand" clean all install DESTDIR="${BUILD_DIRECTORY}" MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}"
+make -C "${SOURCE_DIRECTORY}" buildkernel KERNCONF="${KERNCONF}" # MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}"
+make -C "${SOURCE_DIRECTORY}" installkernel KERNCONF="${KERNCONF}" DESTDIR="${BUILD_DIRECTORY}" # MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}"
+
+# TODO: /boot/device.hints ?
 cp "${BASE_DIRECTORY}/boot/loader.conf" "${BUILD_DIRECTORY}/boot"
-cp "/usr/obj/usr/src/amd64.amd64/release/dist/base/boot"/*.rc "${BUILD_DIRECTORY}/boot"
-cp "/usr/obj/usr/src/amd64.amd64/release/dist/base/boot/device.hints" "${BUILD_DIRECTORY}/boot"
 echo "vfs.root.mountfrom=\"`df -T \"${BASE_DIRECTORY}\" | tail -n +2 | cut -wf 2`:`df \"${BASE_DIRECTORY}\" | tail -n +2 | cut -wf 1`\"" >> "${BUILD_DIRECTORY}/boot/loader.conf"
 
 mkdir -p "${BUILD_DIRECTORY}/etc"
@@ -156,19 +170,15 @@ cp "${BASE_DIRECTORY}/etc/fstab" "${BUILD_DIRECTORY}/etc/fstab"
 makefs "${BOOTFS_OUTPUT}" "${BUILD_DIRECTORY}"
 BOOTFS_SIZE=`stat -f "%z" "${BOOTFS_OUTPUT}"`
 BOOTFS_SIZE_PLUS_SAFETY=$((BOOTFS_EXTRA_SIZE + BOOTFS_SIZE))
-rm -f "/usr/obj/usr/src/amd64.amd64/release/base.txz"
-make -C "${SOURCE_DIRECTORY}/stand" MD_IMAGE_SIZE=${BOOTFS_SIZE_PLUS_SAFETY}
-# NOTE: it seems, to me, that's not /usr/src/stand/Makefile who build/creates loader.efi but /usr/src/release/Makefile
-make -C "${SOURCE_DIRECTORY}/release" NOPORTS=YES NOSRC=YES NODOC=YES WITHOUT_DEBUG_FILES=YES MD_IMAGE_SIZE=${BOOTFS_SIZE_PLUS_SAFETY} base.txz
+make -C "${SOURCE_DIRECTORY}/stand" clean all install MD_IMAGE_SIZE=${BOOTFS_SIZE_PLUS_SAFETY} DESTDIR="${BUILD_DIRECTORY}" MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}"
 
-# find /usr/obj/ -name "*.efi" -delete
-cp "/usr/obj/usr/src/amd64.amd64/release/dist/base/boot/loader.efi" "${UNSIGNED_LOADER_OUTPUT}"
+# find "${OBJECT_DIRECTORY}" -name "*.efi" -delete
+cp "${BUILD_DIRECTORY}/boot/loader.efi" "${UNSIGNED_LOADER_OUTPUT}"
 # cp "${UNSIGNED_LOADER_OUTPUT}" "${UNSIGNED_LOADER_OUTPUT}.before.embed_mfs"
 # cp "${BOOTFS_OUTPUT}" "${BOOTFS_OUTPUT}.before.embed_mfs"
 /bin/sh "${SOURCE_DIRECTORY}/sys/tools/embed_mfs.sh" "${UNSIGNED_LOADER_OUTPUT}" "${BOOTFS_OUTPUT}"
 
 uefisign -c "${CERTIFICATE}" -k "${PRIVATE_KEY}" -o "${SIGNED_LOADER_OUTPUT}" "${UNSIGNED_LOADER_OUTPUT}"
-
 
 mount -t msdosfs "/dev/${ESP_PARTITION}" "${TEMPORARY_MOUNT_POINT}"
 if [ -n "${REFIND_DIRECTORY}" ]; then
@@ -205,11 +215,10 @@ menuentry "FreeBSD" {
     icon \EFI\refind\icons\os_freebsd.png
 }
 EOF
-    efibootmgr -a -c -l "${TEMPORARY_MOUNT_POINT}/EFI/refind/refind_${REFIND_ARCHITECTURE_SUFFIX}.efi" -L "rEFInd"
+    create_entry_if_not_exists "${TEMPORARY_MOUNT_POINT}/EFI/refind/refind_${REFIND_ARCHITECTURE_SUFFIX}.efi" "rEFInd"
 fi
-# TODO: make FreeBSD's version dynamic
+# TODO: make FreeBSD's version dynamic (major.minor)
 cp "${SIGNED_LOADER_OUTPUT}" "${TEMPORARY_MOUNT_POINT}/EFI/Boot/signed-bootx64-freebsd-14.efi"
-# TODO: only if an entry doesn't already exist
-efibootmgr -a -c -l "${TEMPORARY_MOUNT_POINT}/EFI/Boot/signed-bootx64-freebsd-14.efi" -L "FreeBSD 14 (signed)"
+create_entry_if_not_exists "${TEMPORARY_MOUNT_POINT}/EFI/Boot/signed-bootx64-freebsd-14.efi" "FreeBSD 14 (signed)"
 sync
 umount "${TEMPORARY_MOUNT_POINT}"

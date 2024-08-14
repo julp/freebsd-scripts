@@ -46,7 +46,7 @@ Then, in your BIOS, register MOK.cer
 ## Tested configurations
 
 * EVGA Z370 FTW: Windows 10/FreeBSD 13.[12] (without rEFInd - it was already setup)
-* MSI Z690 Unify-X: Windows 11/FreeBSD 13.2/14.0 (without rEFInd - it was already setup)
+* MSI Z690 Unify-X: Windows 11/FreeBSD 13.2/14.[01] (without rEFInd - it was already setup)
 
 ## Importants notes
 

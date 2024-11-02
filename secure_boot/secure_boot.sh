@@ -151,26 +151,78 @@ create_entry_if_not_exists()
 
 #SOURCE_DIRECTORY=$(realpath `make -C "${SOURCE_DIRECTORY}" -V .OBJDIR`)
 
+# <loader.conf parsing>
+set +e
+. "${BASE_DIRECTORY}/boot/loader.conf" 2> /dev/null
+set -e
+
+FIND_ARGUMENTS=""
+PORTS_MODULES=""
+for v in $(set); do
+    value=`echo "${v}" | cut -f 2 -d "="`
+    variable=`echo "${v}" | cut -f 1 -d "="`
+    module=${variable%_load}
+    if [ "${value}" == "YES" -a "${module}" != "${variable}" ]; then
+        eval location="\$${module}_name"
+        if [ -z "${location}" ]; then
+#             location="/boot/kernel/${module}.ko"
+            FIND_ARGUMENTS="${FIND_ARGUMENTS} ! -name \"${module}.ko\""
+        else
+            mkdir -p `dirname "${BUILD_DIRECTORY}/${location}"`
+            # NOTE: this implies that the package from which it comes from is installed on the (build) system
+            port=`pkg which -qo "${location}" || true`
+            if [ -n "${port}" ]; then
+                PORTS_MODULES="${PORTS_MODULES} ${port}"
+            fi
+        fi
+    fi
+done
+# </loader.conf parsing>
+
 kldload -n filemon
 mkdir -p "${BUILD_DIRECTORY}/boot"
 # cp -r "${BASE_DIRECTORY}/boot/kernel" "${BUILD_DIRECTORY}/boot"
 mtree -deUW -f "${SOURCE_DIRECTORY}/etc/mtree/BSD.root.dist" -p "${BUILD_DIRECTORY}"
 mtree -deUW -f "${SOURCE_DIRECTORY}/etc/mtree/BSD.usr.dist" -p "${BUILD_DIRECTORY}/usr"
-make -C "${SOURCE_DIRECTORY}/stand" clean all install DESTDIR="${BUILD_DIRECTORY}" MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}"
-make -C "${SOURCE_DIRECTORY}" buildkernel KERNCONF="${KERNCONF}" # MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}"
-make -C "${SOURCE_DIRECTORY}" installkernel KERNCONF="${KERNCONF}" DESTDIR="${BUILD_DIRECTORY}" # MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}"
+make -C "${SOURCE_DIRECTORY}/stand" clean all install DESTDIR="${BUILD_DIRECTORY}" MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}" -DWITHOUT_DEBUG_FILES -DWITHOUT_FORTH -DWITH_LOADER_LUA
+# <PORTS_MODULES uses a chroot>
+if [ -n "${PORTS_MODULES}" ]; then
+    # TODO: it uses /usr/include/sys/param.h so this is the current kernel build system not the one we are currently building
+    PATHS_TO_CHROOT="/etc /bin /libexec /lib /usr/bin /usr/lib /usr/share /usr/include /usr/local/sbin /usr/local/lib /var/run"
+    for path in ${PATHS_TO_CHROOT}; do
+        mkdir -p "${BUILD_DIRECTORY}/${path}"
+        mount -t "nullfs" -o "ro" "${path}" "${BUILD_DIRECTORY}/${path}"
+    done
+fi
+# </PORTS_MODULES uses a chroot>
+export WITHOUT_MAN # /usr/share is read-only
+make -C "${SOURCE_DIRECTORY}" buildkernel KERNCONF="${KERNCONF}" PORTS_MODULES="${PORTS_MODULES}" # MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}"
+make -C "${SOURCE_DIRECTORY}" installkernel KERNCONF="${KERNCONF}" PORTS_MODULES="${PORTS_MODULES}" DESTDIR="${BUILD_DIRECTORY}" -DWITHOUT_KERNEL_SYMBOLS # MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}"
+# <PORTS_MODULES uses a chroot>
+if [ -n "${PORTS_MODULES}" ]; then
+    for path in ${PATHS_TO_CHROOT}; do
+        umount "${BUILD_DIRECTORY}/${path}"
+    done
+fi
+# </PORTS_MODULES uses a chroot>
 
 # TODO: /boot/device.hints ?
-cp "${BASE_DIRECTORY}/boot/loader.conf" "${BUILD_DIRECTORY}/boot"
+cp "${BASE_DIRECTORY}/boot/loader.conf" "${BUILD_DIRECTORY}/boot/"
 echo "vfs.root.mountfrom=\"`df -T \"${BASE_DIRECTORY}\" | tail -n +2 | cut -wf 2`:`df \"${BASE_DIRECTORY}\" | tail -n +2 | cut -wf 1`\"" >> "${BUILD_DIRECTORY}/boot/loader.conf"
+
+# <remove unneeded kernel modules>
+eval find "${BUILD_DIRECTORY}/boot/kernel/" -name "*.ko" "${FIND_ARGUMENTS}" -delete
+# </remove unneeded kernel modules>
 
 mkdir -p "${BUILD_DIRECTORY}/etc"
 cp "${BASE_DIRECTORY}/etc/fstab" "${BUILD_DIRECTORY}/etc/fstab"
 
 makefs "${BOOTFS_OUTPUT}" "${BUILD_DIRECTORY}"
+# NOTE/reminder: make clean only removes intermediary/object files (not the final "binary" files)
+# rm -fr /usr/obj/usr/src/stand
 BOOTFS_SIZE=`stat -f "%z" "${BOOTFS_OUTPUT}"`
 BOOTFS_SIZE_PLUS_SAFETY=$((BOOTFS_EXTRA_SIZE + BOOTFS_SIZE))
-make -C "${SOURCE_DIRECTORY}/stand" clean all install MD_IMAGE_SIZE=${BOOTFS_SIZE_PLUS_SAFETY} DESTDIR="${BUILD_DIRECTORY}" MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}"
+make -C "${SOURCE_DIRECTORY}/stand" clean all install MD_IMAGE_SIZE=${BOOTFS_SIZE_PLUS_SAFETY} DESTDIR="${BUILD_DIRECTORY}" MAKEOBJDIRPREFIX="${OBJECT_DIRECTORY}" -DWITHOUT_DEBUG_FILES -DWITHOUT_FORTH -DWITH_LOADER_LUA
 
 # find "${OBJECT_DIRECTORY}" -name "*.efi" -delete
 cp "${BUILD_DIRECTORY}/boot/loader.efi" "${UNSIGNED_LOADER_OUTPUT}"
@@ -201,6 +253,8 @@ if [ -n "${REFIND_DIRECTORY}" ]; then
     cp -r "${REFIND_DIRECTORY}/refind/icons" "${TEMPORARY_MOUNT_POINT}/EFI/refind/"
     cp "${REFIND_DIRECTORY}/refind/drivers_${REFIND_ARCHITECTURE_SUFFIX}"/*.efi "${TEMPORARY_MOUNT_POINT}/EFI/refind/"
     cp "${REFIND_DIRECTORY}/refind/refind_${REFIND_ARCHITECTURE_SUFFIX}.efi" "${TEMPORARY_MOUNT_POINT}/EFI/refind/"
+    # TODO: FreeBSD version (only major?)
+    # TODO: add entries only if they don't already exist
     cat > "${TEMPORARY_MOUNT_POINT}/EFI/refind/refind.conf" <<"EOF"
 timeout 20
 showtools memtest, shutdown, reboot, exit, firmware
@@ -222,3 +276,10 @@ cp "${SIGNED_LOADER_OUTPUT}" "${TEMPORARY_MOUNT_POINT}/EFI/Boot/signed-bootx64-f
 create_entry_if_not_exists "${TEMPORARY_MOUNT_POINT}/EFI/Boot/signed-bootx64-freebsd-14.efi" "FreeBSD 14 (signed)"
 sync
 umount "${TEMPORARY_MOUNT_POINT}"
+
+# <TEST>
+UNAME_OUTPUT=$(/usr/obj/usr/src/`uname -p`.`uname -p`/usr.bin/uname/uname -U)
+FREEBSD_MAJOR=$(( "${UNAME_OUTPUT}" / 100000 ))
+FREEBSD_MINOR=$(( "${UNAME_OUTPUT}" / 1000 - "${FREEBSD_MAJOR}" * 100 ))
+echo "/usr/obj compiled for FreeBSD-${FREEBSD_MAJOR}.${FREEBSD_MINOR} ?"
+# </TEST>

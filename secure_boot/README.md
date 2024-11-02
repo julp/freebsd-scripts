@@ -4,7 +4,7 @@ This is not about security but how to create a dual boot and make Windows >= 11 
 
 ## Requirements
 
-* an EFI partition of at least 300 Mio (per FreeBSD loader)
+* an EFI partition of at least 50 Mio (per FreeBSD loader)
 * FreeBSD sources installed on /usr/src
 
 ## Before usage
@@ -50,13 +50,19 @@ Then, in your BIOS, register MOK.cer
 
 ## Importants notes
 
-* I highly suggest to run this script before `make installkernel` when performing a system upgrade else /usr/obj might be recompiled from the upgraded world and you won't be able to reuse /usr/obj to upgrade an other system
+* I highly suggest to run this script **before** `make installkernel` when performing a system upgrade else /usr/obj might be recompiled from the upgraded world and you won't be able to reuse /usr/obj to upgrade an other system
 * prefer loading modules from /etc/rc.conf (`kld_list="space-separated list of module names to be loaded"`) instead of /boot/loader.conf (when possible)
 
 ## TODO
 
-* remove unused modules
 * preserve the BE menu at FreeBSD boot menu (`currdev` ? `rootdev` ?)
+* option for an alternate location of /boot/loader.conf ?
+
+## Features
+
+* loader.conf parsing to:
+    + remove unneeded modules
+    + recompile and embed third-party (from ports) modules but they need to be installed on the build machine (based on current kernel host?)
 
 ## Credits
 
